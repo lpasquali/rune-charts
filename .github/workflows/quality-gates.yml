@@ -87,6 +87,8 @@ jobs:
     steps:
       - name: Query Kubernetes releases and validate kind image availability
         id: versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
