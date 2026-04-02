@@ -1,0 +1,90 @@
+name: Quality Gates (Rune Charts)
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  feature-charts:
+    name: RuneGate/Feature/Charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: |
+          helm template rune ./charts/rune >/tmp/rune-rendered.yaml
+
+  linting-charts:
+    name: RuneGate/Linting/Charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: helm lint ./charts/rune
+
+  package-charts:
+    name: RuneGate/Regression/Chart-Package
+    needs: [feature-charts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: |
+          mkdir -p dist
+          helm package ./charts/rune --destination dist/
+
+  security-sbom:
+    name: RuneGate/Security/SBOM-and-CVE-Policy
+    needs: [feature-charts, linting-charts]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: |
+          mkdir -p dist sbom
+          helm package ./charts/rune --destination dist/
+          docker run --rm -v "${PWD}:/work" anchore/syft:v1.17.0 dir:/work/charts/rune -o cyclonedx-json=/work/sbom/rune-chart.cdx.json
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: sbom/rune-chart.cdx.json
+
+  security-sast:
+    name: RuneGate/Security/SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+
+  security-licenses:
+    name: RuneGate/Security/LicenseCompliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          test -f LICENSE
+
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
+            test "$result" = success
+          done

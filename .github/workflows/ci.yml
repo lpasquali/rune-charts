@@ -1,0 +1,38 @@
+name: Charts CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  helm-validate:
+    name: Helm Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: |
+          helm lint ./charts/rune
+          helm template rune ./charts/rune >/tmp/rune-rendered.yaml
+
+  package-chart:
+    name: Package Chart
+    needs: [helm-validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - run: |
+          mkdir -p dist
+          helm package ./charts/rune --destination dist/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: helm-packages
+          path: dist/
+          retention-days: 7
