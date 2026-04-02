@@ -90,11 +90,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          AUTH_HEADER=()
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+          fi
+
           # Fetch stable Kubernetes releases from GitHub API (authenticated + retries).
           # Fallback to git tags if API is unavailable/rate-limited.
           API_JSON=$(curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "${AUTH_HEADER[@]}" \
             https://api.github.com/repos/kubernetes/kubernetes/releases?per_page=100 || true)
 
           if [ -n "${API_JSON}" ] && printf '%s' "${API_JSON}" | jq -e 'type == "array"' >/dev/null 2>&1; then
