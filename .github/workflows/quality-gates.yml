@@ -87,34 +87,63 @@ jobs:
       - name: Query Kubernetes releases and validate kind image availability
         id: versions
         run: |
-          # Fetch all Kubernetes releases from GitHub API
-          RELEASES=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases | \
+          set -euo pipefail
+
+          # Fetch stable Kubernetes releases from GitHub (exclude prereleases)
+          RELEASES=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases?per_page=100 | \
             jq -r '.[] | select(.prerelease==false) | .tag_name' | \
             sed 's/^v//' | \
-            sort -V | \
-            tail -20)
-          
-          # Check which versions have kind images available on Docker Hub
-          echo "Checking kind image availability for Kubernetes versions..."
-          AVAILABLE_VERSIONS=()
-          while IFS= read -r version; do
-            # Query all kind images and look for exact version match (with v prefix)
-            if curl -s "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100" | \
-               jq -r '.results[].name' | grep -q "^v${version}$"; then
-              AVAILABLE_VERSIONS+=("$version")
-              echo "  ✓ v$version - kind image available"
-            else
-              echo "  ✗ v$version - kind image NOT found, skipping"
+            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+            sort -V)
+
+          # Kubernetes supports latest 3 minor releases (N, N-1, N-2)
+          SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
+
+          # Fetch kind image tags from Docker Hub (multiple pages)
+          KIND_TAGS=$(for page in 1 2 3; do
+            curl -s "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100&page=${page}" | jq -r '.results[].name'
+          done | sort -u)
+
+          echo "Supported Kubernetes minors (N, N-1, N-2):"
+          printf '  - %s\n' $SUPPORTED_MINORS
+
+          SELECTED=""
+          for minor in $SUPPORTED_MINORS; do
+            echo "Resolving last two patch releases for minor ${minor}..."
+
+            # Candidate patches for this supported minor, newest first
+            CANDIDATES=$(printf '%s\n' "$RELEASES" | awk -F. -v m="$minor" '$1"."$2==m {print}' | sort -V | tail -20)
+
+            # Keep only patches that have a corresponding kind image
+            AVAILABLE_FOR_MINOR=""
+            while IFS= read -r version; do
+              if [ -n "$version" ] && printf '%s\n' "$KIND_TAGS" | grep -qx "v${version}"; then
+                AVAILABLE_FOR_MINOR="${AVAILABLE_FOR_MINOR}${version}"$'\n'
+              fi
+            done <<< "$CANDIDATES"
+
+            # Select latest two available patches for this supported minor
+            PICKED=$(printf '%s' "$AVAILABLE_FOR_MINOR" | sed '/^$/d' | sort -V | tail -2)
+            if [ -z "$PICKED" ]; then
+              echo "  ✗ No kind images found for supported minor ${minor}"
+              continue
             fi
-          done <<< "$RELEASES"
-          
-          # Take the latest 6 available versions
-          SELECTED=$(printf '%s\n' "${AVAILABLE_VERSIONS[@]}" | sort -V | tail -6)
-          
+
+            echo "  ✓ Selected for ${minor}:"
+            printf '    - v%s\n' $PICKED
+            SELECTED="${SELECTED}${PICKED}"$'\n'
+          done
+
+          FINAL=$(printf '%s' "$SELECTED" | sed '/^$/d' | sort -V | uniq)
+          if [ -z "$FINAL" ]; then
+            echo "No Kubernetes versions matched supported minors with available kind images."
+            exit 1
+          fi
+
           # Convert to JSON array for matrix strategy
-          MATRIX=$(echo "$SELECTED" | jq -R -s -c 'split("\n")[:-1]')
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-          echo "Selected Kubernetes versions for testing: $MATRIX"
+          MATRIX=$(printf '%s\n' "$FINAL" | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Selected Kubernetes patch versions for testing: $MATRIX"
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
