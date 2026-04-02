@@ -68,7 +68,7 @@ jobs:
             -v "${PWD}:/work" \
             -w /work \
             aquasec/trivy:0.65.0 \
-            config --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+            config --severity HIGH,CRITICAL --exit-code 1 .
 
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
