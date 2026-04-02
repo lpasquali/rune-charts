@@ -78,16 +78,43 @@ jobs:
       - run: |
           test -f LICENSE
 
-  deployment-test:
-    name: RuneGate/Functional/Deployment-Test
-    needs: [feature-charts, linting-charts]
+  fetch-k8s-versions:
+    name: Discover Supported Kubernetes Versions
     runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.versions.outputs.matrix }}
+    steps:
+      - name: Query Kubernetes releases from GitHub
+        id: versions
+        run: |
+          # Fetch all Kubernetes releases from GitHub API
+          RELEASES=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases | \
+            jq -r '.[] | select(.prerelease==false) | .tag_name' | \
+            sed 's/^v//' | \
+            sort -V | \
+            tail -6)
+          
+          # Convert to JSON array for matrix strategy
+          MATRIX=$(echo "$RELEASES" | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Testing Kubernetes versions: $MATRIX"
+
+  deployment-test:
+    name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
+    needs: [feature-charts, linting-charts, fetch-k8s-versions]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - uses: helm/kind-action@v1.12.0
+      - name: Start kind cluster with Kubernetes ${{ matrix.k8s-version }}
+        uses: helm/kind-action@v1.12.0
         with:
-          node_image: kindest/node:v1.31.0
+          node_image: kindest/node:v${{ matrix.k8s-version }}
+          wait: 120s
       - name: Deploy RUNE chart to kind cluster
         run: |
           kubectl create namespace rune-test
@@ -99,20 +126,55 @@ jobs:
             --debug
       - name: Verify deployment and pod readiness
         run: |
+          echo "=== Kubernetes Version ==="
+          kubectl version --short
+          
+          echo "=== Deployment Status ==="
           kubectl get deployment -n rune-test rune
+          
+          echo "=== Pod Status ==="
           kubectl get pods -n rune-test -o wide
+          
+          echo "=== Waiting for pod readiness ==="
           kubectl wait --for=condition=ready pod \
             -l app.kubernetes.io/instance=rune \
             -n rune-test \
             --timeout=2m || \
             (echo "Pod not ready within timeout, fetching logs:" && \
-             kubectl logs -n rune-test deployment/rune --all-containers=true)
-      - name: Validate service and configmap
+             kubectl logs -n rune-test deployment/rune --all-containers=true && \
+             kubectl describe pods -n rune-test && \
+             exit 1)
+      - name: Validate resources
         run: |
+          echo "=== Services ==="
           kubectl get service -n rune-test rune
+          
+          echo "=== ConfigMaps ==="
           kubectl get configmap -n rune-test rune
+          
+          echo "=== ClusterRole ==="
           kubectl get clusterrole rune
+          
+          echo "=== ClusterRoleBinding ==="
           kubectl get clusterrolebinding rune
+          
+          echo "=== All resources in rune-test namespace ==="
+          kubectl get all -n rune-test
+      - name: Run basic connectivity test
+        run: |
+          # Port-forward to test service
+          kubectl port-forward -n rune-test svc/rune 8080:8080 &
+          PF_PID=$!
+          sleep 2
+          
+          # Try to reach the service
+          if curl -sf http://localhost:8080/health >/dev/null 2>&1 || curl -sf http://localhost:8080 >/dev/null 2>&1; then
+            echo "✓ Service is responding"
+          else
+            echo "⚠ Service endpoint not responding (may be expected if not listening yet)"
+          fi
+          
+          kill $PF_PID 2>/dev/null || true
       - name: Cleanup
         if: always()
         run: |
@@ -121,10 +183,13 @@ jobs:
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses, deployment-test]
+    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses, fetch-k8s-versions, deployment-test]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}" "${{ needs.deployment-test.result }}"; do
-            test "$result" = success
+          echo "Checking quality gate results..."
+          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}" "${{ needs.fetch-k8s-versions.result }}" "${{ needs.deployment-test.result }}"; do
+            echo "  Result: $result"
+            test "$result" = success || exit 1
           done
+          echo "✓ All quality gates passed"
