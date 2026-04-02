@@ -309,8 +309,6 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-apiVersion: apps/v1
-kind: Deployment
 metadata:
   name: {{ include "rune.fullname" . }}
   labels:
@@ -324,9 +322,7 @@ spec:
       {{- include "rune.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      annotations:
-        # Roll the deployment whenever the ConfigMap changes.
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      annotations: {}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
