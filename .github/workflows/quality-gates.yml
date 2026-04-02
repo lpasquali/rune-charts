@@ -84,7 +84,7 @@ jobs:
     outputs:
       versions: ${{ steps.versions.outputs.matrix }}
     steps:
-      - name: Query Kubernetes releases from GitHub
+      - name: Query Kubernetes releases and validate kind image availability
         id: versions
         run: |
           # Fetch all Kubernetes releases from GitHub API
@@ -92,12 +92,29 @@ jobs:
             jq -r '.[] | select(.prerelease==false) | .tag_name' | \
             sed 's/^v//' | \
             sort -V | \
-            tail -6)
+            tail -20)
+          
+          # Check which versions have kind images available on Docker Hub
+          echo "Checking kind image availability for Kubernetes versions..."
+          AVAILABLE_VERSIONS=()
+          while IFS= read -r version; do
+            # Query all kind images and look for exact version match (with v prefix)
+            if curl -s "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100" | \
+               jq -r '.results[].name' | grep -q "^v${version}$"; then
+              AVAILABLE_VERSIONS+=("$version")
+              echo "  ✓ v$version - kind image available"
+            else
+              echo "  ✗ v$version - kind image NOT found, skipping"
+            fi
+          done <<< "$RELEASES"
+          
+          # Take the latest 6 available versions
+          SELECTED=$(printf '%s\n' "${AVAILABLE_VERSIONS[@]}" | sort -V | tail -6)
           
           # Convert to JSON array for matrix strategy
-          MATRIX=$(echo "$RELEASES" | jq -R -s -c 'split("\n")[:-1]')
+          MATRIX=$(echo "$SELECTED" | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-          echo "Testing Kubernetes versions: $MATRIX"
+          echo "Selected Kubernetes versions for testing: $MATRIX"
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
