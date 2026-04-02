@@ -24,5 +24,4 @@ See `charts/rune/secret.values.example.yaml`.
 ## Relationship to Other Repositories
 
 - application source: `rune`
-- operator source: `rune-operator`
 - documentation: `rune-docs`

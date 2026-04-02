@@ -96,8 +96,6 @@ jobs:
             full_ref = f"{image_name}:{image_tag}"
             if image_name.endswith('/rune'):
               kv['RUNE_IMAGE'] = full_ref
-            elif image_name.endswith('/rune-operator'):
-              kv['RUNE_OPERATOR_IMAGE'] = full_ref
             else:
               kv['UPSTREAM_IMAGE'] = full_ref
 
@@ -106,7 +104,6 @@ jobs:
 
             ordered_keys = [
               'RUNE_IMAGE',
-              'RUNE_OPERATOR_IMAGE',
               'UPSTREAM_IMAGE',
               'LAST_SYNC_SOURCE_REPO',
               'LAST_SYNC_AT_UTC',
