@@ -32,7 +32,9 @@ rules:
       - resourcequotas
       - limitranges
       - serviceaccounts
+      {{- if .Values.rbac.allowSecretsAccess }}
       - secrets
+      {{- end }}
     verbs: {{ $verbs | toJson }}
 
   # ── Apps ──────────────────────────────────────────────────────────────────

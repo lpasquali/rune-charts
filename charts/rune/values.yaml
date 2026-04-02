@@ -33,6 +33,9 @@ rbac:
   create: true
   # Set to true if HolmesGPT only needs read access to most resources.
   readOnly: true
+  # Avoid cluster-wide secret access by default (Trivy AVD-KSV-0041).
+  # Set true only if your use-case explicitly requires listing/getting secrets cluster-wide.
+  allowSecretsAccess: false
 
 # ---------------------------------------------------------------------------
 # Pod configuration
@@ -43,7 +46,12 @@ podLabels: {}
 podSecurityContext:
   runAsNonRoot: false  # set true once the image runs as non-root
 
-securityContext: {}
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
 
 # ---------------------------------------------------------------------------
 # Service
