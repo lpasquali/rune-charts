@@ -62,13 +62,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: 'config'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '1'
-          severity: 'HIGH,CRITICAL'
+      - name: Trivy config scan
+        run: |
+          docker run --rm \
+            -v "${PWD}:/work" \
+            -w /work \
+            aquasec/trivy:0.65.0 \
+            config --severity HIGH,CRITICAL --exit-code 1 --no-progress .
 
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
