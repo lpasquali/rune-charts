@@ -22,6 +22,7 @@ rules:
       - nodes/stats
       - services
       - endpoints
+      - endpointslices
       - events
       - namespaces
       - persistentvolumeclaims
@@ -31,16 +32,8 @@ rules:
       - resourcequotas
       - limitranges
       - serviceaccounts
-      {{- if .Values.rbac.allowSecretsAccess }}
       - secrets
-      {{- end }}
     verbs: {{ $verbs | toJson }}
-
-  # ── Discovery ────────────────────────────────────────────────────────────
-  - apiGroups: ["discovery.k8s.io"]
-    resources:
-      - endpointslices
-    verbs: ["get", "list", "watch"]
 
   # ── Apps ──────────────────────────────────────────────────────────────────
   - apiGroups: ["apps"]

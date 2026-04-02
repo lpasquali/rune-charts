@@ -7,7 +7,7 @@ image:
   repository: ghcr.io/lpasquali/rune
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "main-165ce44"
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -24,9 +24,6 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template.
   name: ""
-  # Disable automatic mounting of service account token (pod will not have access to its own credentials).
-  # Only enable if your workload explicitly requires the token.
-  automountServiceAccountToken: false
 
 # ---------------------------------------------------------------------------
 # RBAC — ClusterRole to allow the RUNE pod to query the K8s cluster
@@ -36,9 +33,6 @@ rbac:
   create: true
   # Set to true if HolmesGPT only needs read access to most resources.
   readOnly: true
-  # Avoid cluster-wide secret access by default (Trivy AVD-KSV-0041).
-  # Set true only if your use-case explicitly requires listing/getting secrets cluster-wide.
-  allowSecretsAccess: false
 
 # ---------------------------------------------------------------------------
 # Pod configuration
@@ -49,12 +43,7 @@ podLabels: {}
 podSecurityContext:
   runAsNonRoot: false  # set true once the image runs as non-root
 
-securityContext:
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
+securityContext: {}
 
 # ---------------------------------------------------------------------------
 # Service

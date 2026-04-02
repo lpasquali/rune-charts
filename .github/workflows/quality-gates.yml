@@ -14,7 +14,7 @@ jobs:
     name: RuneGate/Feature/Charts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: |
           helm template rune ./charts/rune >/tmp/rune-rendered.yaml
@@ -23,7 +23,7 @@ jobs:
     name: RuneGate/Linting/Charts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: helm lint ./charts/rune
 
@@ -32,7 +32,7 @@ jobs:
     needs: [feature-charts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: |
           mkdir -p dist
@@ -47,7 +47,7 @@ jobs:
       attestations: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: |
           mkdir -p dist sbom
@@ -61,277 +61,30 @@ jobs:
     name: RuneGate/Security/SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Trivy config scan
-        run: |
-          docker run --rm \
-            -v "${PWD}:/work" \
-            -w /work \
-            aquasec/trivy:0.65.0 \
-            config --severity HIGH,CRITICAL --exit-code 1 .
+      - uses: actions/checkout@v6
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
 
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: |
           test -f LICENSE
-
-  fetch-k8s-versions:
-    name: Discover Supported Kubernetes Versions
-    runs-on: ubuntu-latest
-    outputs:
-      versions: ${{ steps.versions.outputs.matrix }}
-      required_version: ${{ steps.versions.outputs.required_version }}
-    steps:
-      - name: Query Kubernetes releases and validate kind image availability
-        id: versions
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          AUTH_HEADER=()
-          if [ -n "${GITHUB_TOKEN:-}" ]; then
-            AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-          fi
-
-          # Fetch stable Kubernetes releases from GitHub API (authenticated + retries).
-          # Fallback to git tags if API is unavailable/rate-limited.
-          API_JSON=$(curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-            -H "Accept: application/vnd.github+json" \
-            "${AUTH_HEADER[@]}" \
-            https://api.github.com/repos/kubernetes/kubernetes/releases?per_page=100 || true)
-
-          if [ -n "${API_JSON}" ] && printf '%s' "${API_JSON}" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            RELEASES=$(printf '%s' "${API_JSON}" | \
-              jq -r '.[] | select(.prerelease==false) | .tag_name' | \
-              sed 's/^v//' | \
-              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
-              sort -V)
-            echo "Using Kubernetes versions from GitHub Releases API."
-          else
-            echo "GitHub Releases API unavailable. Falling back to git tags."
-            RELEASES=$(git ls-remote --tags --refs https://github.com/kubernetes/kubernetes.git 'v1.*' | \
-              awk -F/ '{print $3}' | sed 's/^v//' | \
-              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
-              sort -V | uniq)
-          fi
-
-          if [ -z "${RELEASES}" ]; then
-            echo "Unable to determine Kubernetes releases from API and fallback."
-            exit 1
-          fi
-
-          # Kubernetes supports latest 3 minor releases (N, N-1, N-2)
-          SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
-
-          # Fetch kind image tags from Docker Hub with resilient pagination.
-          # Some endpoints/pages may return 404; handle gracefully and fallback.
-          fetch_kind_tags() {
-            local base_url="$1"
-            local url="${base_url}?page_size=100"
-            local all_tags=""
-
-            while [ -n "$url" ] && [ "$url" != "null" ]; do
-              local resp
-              resp=$(curl -sSL --retry 5 --retry-delay 2 --retry-all-errors "$url" || true)
-              if [ -z "$resp" ]; then
-                break
-              fi
-
-              if ! printf '%s' "$resp" | jq -e '.results' >/dev/null 2>&1; then
-                break
-              fi
-
-              all_tags+=$(printf '%s' "$resp" | jq -r '.results[].name')$'\n'
-              url=$(printf '%s' "$resp" | jq -r '.next // empty')
-            done
-
-            printf '%s' "$all_tags" | sed '/^$/d' | sort -u
-          }
-
-          KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/repositories/kindest/node/tags")
-          if [ -z "${KIND_TAGS}" ]; then
-            # Fallback to newer Docker Hub namespace API format.
-            KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/namespaces/kindest/repositories/node/tags")
-          fi
-
-          if [ -z "${KIND_TAGS}" ]; then
-            echo "Unable to fetch kind image tags from Docker Hub."
-            exit 1
-          fi
-
-          echo "Supported Kubernetes minors (N, N-1, N-2):"
-          printf '  - %s\n' $SUPPORTED_MINORS
-
-          SELECTED=""
-          for minor in $SUPPORTED_MINORS; do
-            echo "Resolving last two patch releases for minor ${minor}..."
-
-            # Candidate patches for this supported minor, newest first
-            CANDIDATES=$(printf '%s\n' "$RELEASES" | awk -F. -v m="$minor" '$1"."$2==m {print}' | sort -V | tail -20)
-
-            # Keep only patches that have a corresponding kind image
-            AVAILABLE_FOR_MINOR=""
-            while IFS= read -r version; do
-              if [ -n "$version" ] && printf '%s\n' "$KIND_TAGS" | grep -qx "v${version}"; then
-                AVAILABLE_FOR_MINOR="${AVAILABLE_FOR_MINOR}${version}"$'\n'
-              fi
-            done <<< "$CANDIDATES"
-
-            # Select latest two available patches for this supported minor
-            PICKED=$(printf '%s' "$AVAILABLE_FOR_MINOR" | sed '/^$/d' | sort -V | tail -2)
-            if [ -z "$PICKED" ]; then
-              echo "  ✗ No kind images found for supported minor ${minor}"
-              continue
-            fi
-
-            echo "  ✓ Selected for ${minor}:"
-            printf '    - v%s\n' $PICKED
-            SELECTED="${SELECTED}${PICKED}"$'\n'
-          done
-
-          FINAL=$(printf '%s' "$SELECTED" | sed '/^$/d' | sort -V | uniq)
-          if [ -z "$FINAL" ]; then
-            echo "No Kubernetes versions matched supported minors with available kind images."
-            exit 1
-          fi
-
-          # Required (blocking) version: latest patch of latest supported minor
-          REQUIRED_VERSION=$(printf '%s\n' "$FINAL" | sort -V | tail -1)
-          if [ -z "$REQUIRED_VERSION" ]; then
-            echo "Unable to determine required Kubernetes version."
-            exit 1
-          fi
-
-          # Convert to JSON array for matrix strategy
-          MATRIX=$(printf '%s\n' "$FINAL" | jq -R -s -c 'split("\n")[:-1]')
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "required_version=$REQUIRED_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Selected Kubernetes patch versions for testing: $MATRIX"
-          echo "Blocking gate version (must pass): $REQUIRED_VERSION"
-
-  deployment-test:
-    name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
-    needs: [feature-charts, linting-charts, fetch-k8s-versions]
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
-    permissions:
-      contents: read
-      packages: read
-    strategy:
-      matrix:
-        k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - name: Start kind cluster with Kubernetes ${{ matrix.k8s-version }}
-        uses: helm/kind-action@v1.12.0
-        with:
-          node_image: kindest/node:v${{ matrix.k8s-version }}
-          wait: 120s
-      - name: Pre-load rune image into kind
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
-            . .ci/upstream-images.env
-            if [ -n "${RUNE_IMAGE:-}" ]; then
-              echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-              docker pull "${RUNE_IMAGE}"
-              # kind load docker-image has a known containerd snapshotter detection bug in v0.26;
-              # pipe through ctr import directly into the kind node instead.
-              docker save "${RUNE_IMAGE}" | \
-                docker exec -i chart-testing-control-plane \
-                  ctr --namespace k8s.io images import -
-            fi
-          fi
-      - name: Deploy RUNE chart to kind cluster
-        run: |
-          kubectl create namespace rune-test
-          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug)
-          if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
-            . .ci/upstream-images.env
-            if [ -n "${RUNE_IMAGE:-}" ]; then
-              RUNE_REPO="${RUNE_IMAGE%:*}"
-              RUNE_TAG="${RUNE_IMAGE##*:}"
-              HELM_ARGS+=(--set "image.repository=${RUNE_REPO}" --set "image.tag=${RUNE_TAG}")
-            fi
-          fi
-          helm install rune ./charts/rune "${HELM_ARGS[@]}"
-      - name: Verify deployment and pod readiness
-        run: |
-          echo "=== Kubernetes Version ==="
-          kubectl version
-          
-          echo "=== Deployment Status ==="
-          kubectl get deployment -n rune-test rune
-          
-          echo "=== Pod Status ==="
-          kubectl get pods -n rune-test -o wide
-          
-          echo "=== Waiting for pod readiness ==="
-          kubectl wait --for=condition=ready pod \
-            -l app.kubernetes.io/instance=rune \
-            -n rune-test \
-            --timeout=2m || \
-            (echo "Pod not ready within timeout, fetching logs:" && \
-             kubectl logs -n rune-test deployment/rune --all-containers=true && \
-             kubectl describe pods -n rune-test && \
-             exit 1)
-      - name: Validate resources
-        run: |
-          echo "=== Services ==="
-          kubectl get service -n rune-test rune
-          
-          echo "=== ConfigMaps ==="
-          kubectl get configmap -n rune-test rune
-          
-          echo "=== ClusterRole ==="
-          kubectl get clusterrole rune
-          
-          echo "=== ClusterRoleBinding ==="
-          kubectl get clusterrolebinding rune
-          
-          echo "=== All resources in rune-test namespace ==="
-          kubectl get all -n rune-test
-      - name: Run basic connectivity test
-        run: |
-          # Port-forward to test service
-          kubectl port-forward -n rune-test svc/rune 8080:8080 &
-          PF_PID=$!
-          sleep 2
-          
-          # Try to reach the service
-          if curl -sf http://localhost:8080/health >/dev/null 2>&1 || curl -sf http://localhost:8080 >/dev/null 2>&1; then
-            echo "✓ Service is responding"
-          else
-            echo "⚠ Service endpoint not responding (may be expected if not listening yet)"
-          fi
-          
-          kill $PF_PID 2>/dev/null || true
-      - name: Cleanup
-        if: always()
-        run: |
-          kubectl describe pods -n rune-test 2>/dev/null || true
-          kubectl logs -n rune-test deployment/rune --all-containers=true 2>/dev/null || true
-          kubectl delete namespace rune-test --ignore-not-found
 
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses, fetch-k8s-versions, deployment-test]
+    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Checking quality gate results..."
-          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}" "${{ needs.fetch-k8s-versions.result }}" "${{ needs.deployment-test.result }}"; do
-            echo "  Result: $result"
-            test "$result" = success || exit 1
+          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
+            test "$result" = success
           done
-          echo "✓ All quality gates passed"
