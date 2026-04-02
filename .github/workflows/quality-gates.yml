@@ -83,6 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.versions.outputs.matrix }}
+      required_version: ${{ steps.versions.outputs.required_version }}
     steps:
       - name: Query Kubernetes releases and validate kind image availability
         id: versions
@@ -140,15 +141,25 @@ jobs:
             exit 1
           fi
 
+          # Required (blocking) version: latest patch of latest supported minor
+          REQUIRED_VERSION=$(printf '%s\n' "$FINAL" | sort -V | tail -1)
+          if [ -z "$REQUIRED_VERSION" ]; then
+            echo "Unable to determine required Kubernetes version."
+            exit 1
+          fi
+
           # Convert to JSON array for matrix strategy
           MATRIX=$(printf '%s\n' "$FINAL" | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "required_version=$REQUIRED_VERSION" >> "$GITHUB_OUTPUT"
           echo "Selected Kubernetes patch versions for testing: $MATRIX"
+          echo "Blocking gate version (must pass): $REQUIRED_VERSION"
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
     needs: [feature-charts, linting-charts, fetch-k8s-versions]
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
     strategy:
       matrix:
         k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
