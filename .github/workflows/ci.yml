@@ -15,7 +15,7 @@ jobs:
     name: Helm Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - run: |
           helm lint ./charts/rune
@@ -26,12 +26,12 @@ jobs:
     needs: [helm-validate]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - run: |
           mkdir -p dist
           helm package ./charts/rune --destination dist/
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: helm-packages
           path: dist/
