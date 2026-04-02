@@ -127,11 +127,36 @@ jobs:
           # Kubernetes supports latest 3 minor releases (N, N-1, N-2)
           SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
 
-          # Fetch kind image tags from Docker Hub (multiple pages, with retries)
-          KIND_TAGS=$(for page in 1 2 3; do
-            curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-              "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100&page=${page}" | jq -r '.results[].name'
-          done | sort -u)
+          # Fetch kind image tags from Docker Hub with resilient pagination.
+          # Some endpoints/pages may return 404; handle gracefully and fallback.
+          fetch_kind_tags() {
+            local base_url="$1"
+            local url="${base_url}?page_size=100"
+            local all_tags=""
+
+            while [ -n "$url" ] && [ "$url" != "null" ]; do
+              local resp
+              resp=$(curl -sSL --retry 5 --retry-delay 2 --retry-all-errors "$url" || true)
+              if [ -z "$resp" ]; then
+                break
+              fi
+
+              if ! printf '%s' "$resp" | jq -e '.results' >/dev/null 2>&1; then
+                break
+              fi
+
+              all_tags+=$(printf '%s' "$resp" | jq -r '.results[].name')$'\n'
+              url=$(printf '%s' "$resp" | jq -r '.next // empty')
+            done
+
+            printf '%s' "$all_tags" | sed '/^$/d' | sort -u
+          }
+
+          KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/repositories/kindest/node/tags")
+          if [ -z "${KIND_TAGS}" ]; then
+            # Fallback to newer Docker Hub namespace API format.
+            KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/namespaces/kindest/repositories/node/tags")
+          fi
 
           if [ -z "${KIND_TAGS}" ]; then
             echo "Unable to fetch kind image tags from Docker Hub."
