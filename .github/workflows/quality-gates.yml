@@ -90,20 +90,46 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Fetch stable Kubernetes releases from GitHub (exclude prereleases)
-          RELEASES=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases?per_page=100 | \
-            jq -r '.[] | select(.prerelease==false) | .tag_name' | \
-            sed 's/^v//' | \
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
-            sort -V)
+          # Fetch stable Kubernetes releases from GitHub API (authenticated + retries).
+          # Fallback to git tags if API is unavailable/rate-limited.
+          API_JSON=$(curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            https://api.github.com/repos/kubernetes/kubernetes/releases?per_page=100 || true)
+
+          if [ -n "${API_JSON}" ] && printf '%s' "${API_JSON}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            RELEASES=$(printf '%s' "${API_JSON}" | \
+              jq -r '.[] | select(.prerelease==false) | .tag_name' | \
+              sed 's/^v//' | \
+              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+              sort -V)
+            echo "Using Kubernetes versions from GitHub Releases API."
+          else
+            echo "GitHub Releases API unavailable. Falling back to git tags."
+            RELEASES=$(git ls-remote --tags --refs https://github.com/kubernetes/kubernetes.git 'v1.*' | \
+              awk -F/ '{print $3}' | sed 's/^v//' | \
+              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+              sort -V | uniq)
+          fi
+
+          if [ -z "${RELEASES}" ]; then
+            echo "Unable to determine Kubernetes releases from API and fallback."
+            exit 1
+          fi
 
           # Kubernetes supports latest 3 minor releases (N, N-1, N-2)
           SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
 
-          # Fetch kind image tags from Docker Hub (multiple pages)
+          # Fetch kind image tags from Docker Hub (multiple pages, with retries)
           KIND_TAGS=$(for page in 1 2 3; do
-            curl -s "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100&page=${page}" | jq -r '.results[].name'
+            curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+              "https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=100&page=${page}" | jq -r '.results[].name'
           done | sort -u)
+
+          if [ -z "${KIND_TAGS}" ]; then
+            echo "Unable to fetch kind image tags from Docker Hub."
+            exit 1
+          fi
 
           echo "Supported Kubernetes minors (N, N-1, N-2):"
           printf '  - %s\n' $SUPPORTED_MINORS
