@@ -22,7 +22,6 @@ rules:
       - nodes/stats
       - services
       - endpoints
-      - endpointslices
       - events
       - namespaces
       - persistentvolumeclaims
@@ -36,6 +35,12 @@ rules:
       - secrets
       {{- end }}
     verbs: {{ $verbs | toJson }}
+
+  # ── Discovery ────────────────────────────────────────────────────────────
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch"]
 
   # ── Apps ──────────────────────────────────────────────────────────────────
   - apiGroups: ["apps"]

@@ -24,6 +24,9 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template.
   name: ""
+  # Disable automatic mounting of service account token (pod will not have access to its own credentials).
+  # Only enable if your workload explicitly requires the token.
+  automountServiceAccountToken: false
 
 # ---------------------------------------------------------------------------
 # RBAC — ClusterRole to allow the RUNE pod to query the K8s cluster
