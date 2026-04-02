@@ -233,12 +233,17 @@ jobs:
       - name: Deploy RUNE chart to kind cluster
         run: |
           kubectl create namespace rune-test
-          helm install rune ./charts/rune \
-            --namespace rune-test \
-            --set image.tag=latest \
-            --set image.pullPolicy=Never \
-            --wait --timeout=2m \
-            --debug
+          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug)
+          if [ -f .ci/upstream-images.env ]; then
+            # shellcheck disable=SC1091
+            . .ci/upstream-images.env
+            if [ -n "${RUNE_IMAGE:-}" ]; then
+              RUNE_REPO="${RUNE_IMAGE%:*}"
+              RUNE_TAG="${RUNE_IMAGE##*:}"
+              HELM_ARGS+=(--set "image.repository=${RUNE_REPO}" --set "image.tag=${RUNE_TAG}")
+            fi
+          fi
+          helm install rune ./charts/rune "${HELM_ARGS[@]}"
       - name: Verify deployment and pod readiness
         run: |
           echo "=== Kubernetes Version ==="

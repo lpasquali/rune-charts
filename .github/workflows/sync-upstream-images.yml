@@ -52,7 +52,7 @@ jobs:
             "${API}/pulls?state=open&per_page=100" | jq -r '.[].head.ref')
 
           ALL_BRANCHES=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "${API}/branches?per_page=100" | jq -r '.[].name' || true)
+            "${API}/branches?per_page=100" | jq -r '.[].name' | grep -v '^main$' || true)
 
           TARGET_BRANCHES=$(printf '%s\n%s\n' "${PR_BRANCHES}" "${ALL_BRANCHES}" | sed '/^$/d' | sort -u)
 
