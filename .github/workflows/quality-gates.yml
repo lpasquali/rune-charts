@@ -218,6 +218,9 @@ jobs:
     needs: [feature-charts, linting-charts, fetch-k8s-versions]
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
+    permissions:
+      contents: read
+      packages: read
     strategy:
       matrix:
         k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
@@ -231,9 +234,20 @@ jobs:
           node_image: kindest/node:v${{ matrix.k8s-version }}
           wait: 120s
       - name: Deploy RUNE chart to kind cluster
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           kubectl create namespace rune-test
-          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug)
+
+          # Create imagePullSecret so kind nodes can pull from GHCR
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace rune-test \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password="${GITHUB_TOKEN}"
+
+          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug \
+            --set 'imagePullSecrets[0].name=ghcr-pull-secret')
           if [ -f .ci/upstream-images.env ]; then
             # shellcheck disable=SC1091
             . .ci/upstream-images.env
