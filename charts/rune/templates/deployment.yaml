@@ -48,6 +48,8 @@ spec:
           emptyDir: {}
         - name: app-cache
           emptyDir: {}
+        - name: app-data
+          emptyDir: {}
         {{- if .Values.rune.kubeconfigSecret }}
         - name: kubeconfig
           secret:
@@ -288,6 +290,8 @@ spec:
               mountPath: /app/.config
             - name: app-cache
               mountPath: /app/.cache
+            - name: app-data
+              mountPath: /app/.rune-api
             {{- if .Values.rune.kubeconfigSecret }}
             - name: kubeconfig
               mountPath: /root/.kube
