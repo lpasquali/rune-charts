@@ -44,6 +44,8 @@ spec:
       {{- $gcpSecretName = printf "%s-gcp-eso" (include "rune.fullname" .) -}}
       {{- end }}
       volumes:
+        - name: app-config
+          emptyDir: {}
         {{- if .Values.rune.kubeconfigSecret }}
         - name: kubeconfig
           secret:
@@ -280,6 +282,8 @@ spec:
             {{- end }}
           {{- end }}
           volumeMounts:
+            - name: app-config
+              mountPath: /app/.config
             {{- if .Values.rune.kubeconfigSecret }}
             - name: kubeconfig
               mountPath: /root/.kube
