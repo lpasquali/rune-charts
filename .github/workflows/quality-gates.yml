@@ -233,21 +233,23 @@ jobs:
         with:
           node_image: kindest/node:v${{ matrix.k8s-version }}
           wait: 120s
-      - name: Deploy RUNE chart to kind cluster
+      - name: Pre-load rune image into kind
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          if [ -f .ci/upstream-images.env ]; then
+            # shellcheck disable=SC1091
+            . .ci/upstream-images.env
+            if [ -n "${RUNE_IMAGE:-}" ]; then
+              echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              docker pull "${RUNE_IMAGE}"
+              kind load docker-image "${RUNE_IMAGE}" --name chart-testing
+            fi
+          fi
+      - name: Deploy RUNE chart to kind cluster
+        run: |
           kubectl create namespace rune-test
-
-          # Create imagePullSecret so kind nodes can pull from GHCR
-          kubectl create secret docker-registry ghcr-pull-secret \
-            --namespace rune-test \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.actor }} \
-            --docker-password="${GITHUB_TOKEN}"
-
-          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug \
-            --set 'imagePullSecrets[0].name=ghcr-pull-secret')
+          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug)
           if [ -f .ci/upstream-images.env ]; then
             # shellcheck disable=SC1091
             . .ci/upstream-images.env
@@ -312,6 +314,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          kubectl describe pods -n rune-test 2>/dev/null || true
+          kubectl logs -n rune-test deployment/rune --all-containers=true 2>/dev/null || true
           kubectl delete namespace rune-test --ignore-not-found
 
   merge-gate:
