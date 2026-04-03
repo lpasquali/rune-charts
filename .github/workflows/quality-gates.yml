@@ -267,7 +267,7 @@ jobs:
       - name: Verify deployment and pod readiness
         run: |
           echo "=== Kubernetes Version ==="
-          kubectl version --short
+          kubectl version
           
           echo "=== Deployment Status ==="
           kubectl get deployment -n rune-test rune
