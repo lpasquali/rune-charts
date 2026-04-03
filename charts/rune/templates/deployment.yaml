@@ -46,6 +46,8 @@ spec:
       volumes:
         - name: app-config
           emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
         {{- if .Values.rune.kubeconfigSecret }}
         - name: kubeconfig
           secret:
@@ -284,6 +286,8 @@ spec:
           volumeMounts:
             - name: app-config
               mountPath: /app/.config
+            - name: app-cache
+              mountPath: /app/.cache
             {{- if .Values.rune.kubeconfigSecret }}
             - name: kubeconfig
               mountPath: /root/.kube
