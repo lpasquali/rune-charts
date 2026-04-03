@@ -1,0 +1,6 @@
+.cr-release-packages/
+.cr-index/
+dist/
+*.tgz
+*.prov
+sbom/
