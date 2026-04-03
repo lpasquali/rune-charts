@@ -52,7 +52,7 @@ jobs:
             "${API}/pulls?state=open&per_page=100" | jq -r '.[].head.ref')
 
           ALL_BRANCHES=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "${API}/branches?per_page=100" | jq -r '.[].name' | grep -v '^main$' || true)
+            "${API}/branches?per_page=100" | jq -r '.[].name' || true)
 
           TARGET_BRANCHES=$(printf '%s\n%s\n' "${PR_BRANCHES}" "${ALL_BRANCHES}" | sed '/^$/d' | sort -u)
 
@@ -96,6 +96,8 @@ jobs:
             full_ref = f"{image_name}:{image_tag}"
             if image_name.endswith('/rune'):
               kv['RUNE_IMAGE'] = full_ref
+            elif image_name.endswith('/rune-operator'):
+              kv['RUNE_OPERATOR_IMAGE'] = full_ref
             else:
               kv['UPSTREAM_IMAGE'] = full_ref
 
@@ -104,6 +106,7 @@ jobs:
 
             ordered_keys = [
               'RUNE_IMAGE',
+              'RUNE_OPERATOR_IMAGE',
               'UPSTREAM_IMAGE',
               'LAST_SYNC_SOURCE_REPO',
               'LAST_SYNC_AT_UTC',
