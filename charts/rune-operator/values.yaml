@@ -18,6 +18,46 @@ rbac:
 
 leaderElect: true
 
+# ---------------------------------------------------------------------------
+# Issue #16 — UAT rootless / read-only deployment
+# These defaults satisfy the Kubernetes "Restricted" Pod Security Standard.
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 65534
+  capabilities:
+    drop:
+      - ALL
+
+# ---------------------------------------------------------------------------
+# Issue #17 — Vault Secrets Operator (VSO) integration (opt-in scaffold)
+# Set vault.enabled: true and configure role/secretPath to activate the
+# VaultAuth and VaultStaticSecret CRDs (requires HashiCorp VSO installed).
+# Standard Kubernetes Secrets remain the default.
+# ---------------------------------------------------------------------------
+vault:
+  enabled: false
+  role: ""             # Vault Kubernetes Auth role bound to the ServiceAccount
+  secretPath: ""       # e.g. secret/data/rune/api-token
+
+# ---------------------------------------------------------------------------
+# Issue #18 — E-Stop controller
+# When estop.enabled: true the operator watches a ConfigMap for a kill-switch
+# signal.  Set key "triggered: true" in the ConfigMap to suspend all
+# RuneBenchmark resources and annotate pods for RAM scrub.
+# ---------------------------------------------------------------------------
+estop:
+  enabled: false
+  configMapName: "rune-estop"
+
 resources:
   limits:
     cpu: 500m
