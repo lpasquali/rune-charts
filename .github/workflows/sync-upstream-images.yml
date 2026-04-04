@@ -129,6 +129,14 @@ jobs:
                 content = values_path.read_text(encoding='utf-8')
                 updated = re.sub(r'^  tag:\s*".*"\s*$', f'  tag: "{image_tag}"', content, count=1, flags=re.MULTILINE)
                 values_path.write_text(updated, encoding='utf-8')
+
+            # If this is the operator image, update operator chart default image.tag.
+            if image_name.endswith('/rune-operator'):
+              op_values_path = Path('charts/rune-operator/values.yaml')
+              if op_values_path.exists():
+                content = op_values_path.read_text(encoding='utf-8')
+                updated = re.sub(r'^  tag:\s*".*"\s*$', f'  tag: "{image_tag}"', content, count=1, flags=re.MULTILINE)
+                op_values_path.write_text(updated, encoding='utf-8')
             PY
 
             if git diff --quiet; then
@@ -136,7 +144,7 @@ jobs:
               continue
             fi
 
-            git add .ci/upstream-images.env charts/rune/values.yaml || true
+            git add .ci/upstream-images.env charts/rune/values.yaml charts/rune-operator/values.yaml || true
             git commit -m "chore(ci): sync ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_REPO}"
 
             if [ "${branch}" = "main" ]; then

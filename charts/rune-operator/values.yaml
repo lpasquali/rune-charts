@@ -1,0 +1,31 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/lpasquali/rune-operator
+  tag: "main"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+leaderElect: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
