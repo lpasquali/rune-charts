@@ -10,7 +10,7 @@ rules:
     resources: ["runebenchmarks", "runebenchmarks/status", "runebenchmarks/finalizers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["secrets", "configmaps", "events"]
+    resources: ["events"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]

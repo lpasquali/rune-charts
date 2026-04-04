@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   feature-charts:
     name: RuneGate/Feature/Charts
@@ -221,7 +225,7 @@ jobs:
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
-    needs: [feature-charts, linting-charts, fetch-k8s-versions]
+    needs: [feature-charts, linting-charts, fetch-k8s-versions, security-sast, security-sbom, security-secrets]
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
     permissions:
@@ -368,12 +372,12 @@ jobs:
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-licenses, fetch-k8s-versions, deployment-test]
+    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-secrets, security-licenses, fetch-k8s-versions, deployment-test]
     runs-on: ubuntu-latest
     steps:
       - run: |
           echo "Checking quality gate results..."
-          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}" "${{ needs.fetch-k8s-versions.result }}" "${{ needs.deployment-test.result }}"; do
+          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-secrets.result }}" "${{ needs.security-licenses.result }}" "${{ needs.fetch-k8s-versions.result }}" "${{ needs.deployment-test.result }}"; do
             echo "  Result: $result"
             test "$result" = success || exit 1
           done
