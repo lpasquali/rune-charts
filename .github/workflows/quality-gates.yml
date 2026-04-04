@@ -95,13 +95,101 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: |
+      - name: Generate SBOM — CycloneDX via Syft (IEC 62443 4-1 ML4 SM-9)
+        run: |
+          set -euo pipefail
           mkdir -p dist sbom
           helm package ./charts/rune --destination dist/
           docker run --rm -v "${PWD}:/work" anchore/syft:v1.17.0 dir:/work/charts/rune -o cyclonedx-json=/work/sbom/rune-chart.cdx.json
-      - uses: actions/attest-build-provenance@v2
+      - name: Scan SBOM — Grype + Trivy (IEC 62443 4-1 ML4 SVV-3 / DM-4)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 -c /work/.grype.yaml sbom:/work/sbom/rune-chart.cdx.json -o json > sbom/rune-chart-grype.json
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/rune-chart.cdx.json --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+      - name: Enforce CVE policy — IEC 62443 4-1 ML4 DM-4
+        env:
+          BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import json
+          from pathlib import Path
+
+          # IEC 62443 4-1 ML4 DM-4 blocking policy:
+          #   Block only when remediation exists (fixable vulnerabilities over threshold).
+          #   Unfixable vulnerabilities are logged and require VEX/risk acceptance tracking.
+          THRESHOLD = 8.8
+
+          def safe_float(v):
+              try: return float(v or 0)
+              except: return 0.0
+
+          findings = []
+          for f in sorted(Path('sbom').glob('*.json')):
+              data = json.loads(f.read_text(encoding='utf-8'))
+              if 'matches' in data:
+                  for m in data.get('matches', []):
+                      vuln = m.get('vulnerability', {})
+                      fix_state = (vuln.get('fix') or {}).get('state', 'unknown')
+                      fixable = fix_state == 'fixed'
+                      scores = []
+                      for c in vuln.get('cvss', []) or []:
+                          metrics = c.get('metrics', {})
+                          for k in ('baseScore', 'base_score'):
+                              scores.append(safe_float(metrics.get(k)))
+                      findings.append((vuln.get('id', 'UNKNOWN'), max(scores) if scores else 0.0, f.name, fixable))
+              elif 'Results' in data:
+                  for r in data.get('Results', []) or []:
+                      for v in r.get('Vulnerabilities', []) or []:
+                          score = 0.0
+                          for vendor in ('nvd', 'redhat', 'ghsa'):
+                              score = max(score, safe_float((v.get('CVSS') or {}).get(vendor, {}).get('V3Score')))
+                          fixable = bool((v.get('FixedVersion') or '').strip())
+                          findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, f.name, fixable))
+
+          blocked = [x for x in findings if x[1] > THRESHOLD and x[3]]
+          warned  = [x for x in findings if x[1] > THRESHOLD and not x[3]]
+
+          print(f'Total findings     : {len(findings)}')
+          print(f'Blocked (policy)   : {len(blocked)}')
+          print(f'Warned (unfixable) : {len(warned)}  — logged in SBOM artifact, VEX acceptance required within patch SLA')
+          for row in blocked[:30]:
+              print(f'BLOCK [fixable] {row[0]}  cvss={row[1]:.1f}  src={row[2]}')
+          for row in warned[:10]:
+              print(f'WARN  [unfixable]  {row[0]}  cvss={row[1]:.1f}  src={row[2]}')
+
+          branch = os.environ.get('BRANCH_NAME', '')
+          strict_branch = branch in {'main', 'develop'}
+          print(f'Branch              : {branch} (strict={strict_branch})')
+
+          if blocked and not strict_branch:
+              print('Non-protected branch detected: reporting fixable CVEs without blocking merge.')
+              raise SystemExit(0)
+          if blocked:
+              raise SystemExit(1)
+          PY
+      - name: Attest SBOM provenance — SLSA L3 (IEC 62443 4-1 ML4 SM-9)
+        uses: actions/attest-build-provenance@v2
         with:
           subject-path: sbom/rune-chart.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-security-outputs
+          path: sbom/
+          retention-days: 14
+
+  security-secrets:
+    name: RuneGate/Security/SecretScanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   security-sast:
     name: RuneGate/Security/SAST
@@ -378,6 +466,7 @@ jobs:
       - package-charts
       - security-sbom
       - security-sast
+      - security-secrets
       - security-licenses
       - fetch-k8s-versions
       - deployment-test
@@ -392,6 +481,7 @@ jobs:
             "${{ needs.package-charts.result }}" \
             "${{ needs.security-sbom.result }}" \
             "${{ needs.security-sast.result }}" \
+            "${{ needs.security-secrets.result }}" \
             "${{ needs.security-licenses.result }}" \
             "${{ needs.fetch-k8s-versions.result }}" \
             "${{ needs.deployment-test.result }}"; do
