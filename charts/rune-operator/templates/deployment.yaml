@@ -13,6 +13,12 @@ spec:
     metadata:
       labels:
         {{- include "rune-operator.selectorLabels" . | nindent 8 }}
+      {{- if .Values.vault.enabled }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
+        vault.hashicorp.com/agent-inject-secret-token: {{ .Values.vault.secretPath | quote }}
+      {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -20,15 +26,15 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "rune-operator.serviceAccountName" . }}
       securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: manager
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --leader-elect={{ .Values.leaderElect }}
+            - --estop-enabled={{ .Values.estop.enabled }}
+            - --estop-configmap-name={{ .Values.estop.configMapName }}
           ports:
             - name: metrics
               containerPort: 8080
@@ -46,11 +52,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
