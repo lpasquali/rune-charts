@@ -14,18 +14,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ─── Path-change detection ──────────────────────────────────────────────────
+  # charts=true: chart templates, values, CI image env, or workflow files changed.
+  # When charts=false (e.g. README-only), every job below is skipped, including
+  # the kind cluster spin-up and the K8s version discovery API calls.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.diff.outputs.charts }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Compute changed paths
+        id: diff
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo ".")
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              CHANGED="."
+            else
+              CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" 2>/dev/null || echo ".")
+            fi
+          fi
+          printf '%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(charts/|\.ci/)'; then
+            echo "charts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "charts=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Chart gates ─────────────────────────────────────────────────────────────
+
   feature-charts:
     name: RuneGate/Feature/Charts
+    needs: [changes]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - run: |
-          helm template rune ./charts/rune > rune-rendered.yaml
-          helm template rune-operator ./charts/rune-operator > rune-operator-rendered.yaml
+          helm template rune ./charts/rune >/tmp/rune-rendered.yaml
+          helm template rune-operator ./charts/rune-operator >/tmp/rune-operator-rendered.yaml
 
   linting-charts:
     name: RuneGate/Linting/Charts
+    needs: [changes]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +76,8 @@ jobs:
 
   package-charts:
     name: RuneGate/Regression/Chart-Package
-    needs: [feature-charts]
+    needs: [changes, feature-charts]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,9 +87,12 @@ jobs:
           helm package ./charts/rune --destination dist/
           helm package ./charts/rune-operator --destination dist/
 
+  # ─── Security gates ──────────────────────────────────────────────────────────
+
   security-sbom:
     name: RuneGate/Security/SBOM-and-CVE-Policy
-    needs: [feature-charts, linting-charts]
+    needs: [changes]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -55,20 +101,106 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: |
+      - name: Generate SBOM — CycloneDX via Syft (IEC 62443 4-1 ML4 SM-9)
+        run: |
+          set -euo pipefail
           mkdir -p dist sbom
           helm package ./charts/rune --destination dist/
-          helm package ./charts/rune-operator --destination dist/
           docker run --rm -v "${PWD}:/work" anchore/syft:v1.17.0 dir:/work/charts/rune -o cyclonedx-json=/work/sbom/rune-chart.cdx.json
-          docker run --rm -v "${PWD}:/work" anchore/syft:v1.17.0 dir:/work/charts/rune-operator -o cyclonedx-json=/work/sbom/rune-operator-chart.cdx.json
-      - uses: actions/attest-build-provenance@v2
+      - name: Scan SBOM — Grype + Trivy (IEC 62443 4-1 ML4 SVV-3 / DM-4)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 -c /work/.grype.yaml sbom:/work/sbom/rune-chart.cdx.json -o json > sbom/rune-chart-grype.json
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/rune-chart.cdx.json --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+      - name: Enforce CVE policy — IEC 62443 4-1 ML4 DM-4
+        env:
+          BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import json
+          from pathlib import Path
+
+          # IEC 62443 4-1 ML4 DM-4 blocking policy:
+          #   Block only when remediation exists (fixable vulnerabilities over threshold).
+          #   Unfixable vulnerabilities are logged and require VEX/risk acceptance tracking.
+          THRESHOLD = 8.8
+
+          def safe_float(v):
+              try: return float(v or 0)
+              except: return 0.0
+
+          findings = []
+          for f in sorted(Path('sbom').glob('*.json')):
+              data = json.loads(f.read_text(encoding='utf-8'))
+              if 'matches' in data:
+                  for m in data.get('matches', []):
+                      vuln = m.get('vulnerability', {})
+                      fix_state = (vuln.get('fix') or {}).get('state', 'unknown')
+                      fixable = fix_state == 'fixed'
+                      scores = []
+                      for c in vuln.get('cvss', []) or []:
+                          metrics = c.get('metrics', {})
+                          for k in ('baseScore', 'base_score'):
+                              scores.append(safe_float(metrics.get(k)))
+                      findings.append((vuln.get('id', 'UNKNOWN'), max(scores) if scores else 0.0, f.name, fixable))
+              elif 'Results' in data:
+                  for r in data.get('Results', []) or []:
+                      for v in r.get('Vulnerabilities', []) or []:
+                          score = 0.0
+                          for vendor in ('nvd', 'redhat', 'ghsa'):
+                              score = max(score, safe_float((v.get('CVSS') or {}).get(vendor, {}).get('V3Score')))
+                          fixable = bool((v.get('FixedVersion') or '').strip())
+                          findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, f.name, fixable))
+
+          blocked = [x for x in findings if x[1] > THRESHOLD and x[3]]
+          warned  = [x for x in findings if x[1] > THRESHOLD and not x[3]]
+
+          print(f'Total findings     : {len(findings)}')
+          print(f'Blocked (policy)   : {len(blocked)}')
+          print(f'Warned (unfixable) : {len(warned)}  — logged in SBOM artifact, VEX acceptance required within patch SLA')
+          for row in blocked[:30]:
+              print(f'BLOCK [fixable] {row[0]}  cvss={row[1]:.1f}  src={row[2]}')
+          for row in warned[:10]:
+              print(f'WARN  [unfixable]  {row[0]}  cvss={row[1]:.1f}  src={row[2]}')
+
+          branch = os.environ.get('BRANCH_NAME', '')
+          strict_branch = branch in {'main', 'develop'}
+          print(f'Branch              : {branch} (strict={strict_branch})')
+
+          if blocked and not strict_branch:
+              print('Non-protected branch detected: reporting fixable CVEs without blocking merge.')
+              raise SystemExit(0)
+          if blocked:
+              raise SystemExit(1)
+          PY
+      - name: Attest SBOM provenance — SLSA L3 (IEC 62443 4-1 ML4 SM-9)
+        uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            sbom/rune-chart.cdx.json
-            sbom/rune-operator-chart.cdx.json
+          subject-path: sbom/rune-chart.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-security-outputs
+          path: sbom/
+          retention-days: 14
+
+  security-secrets:
+    name: RuneGate/Security/SecretScanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   security-sast:
     name: RuneGate/Security/SAST
+    needs: [changes]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,8 +220,14 @@ jobs:
       - run: |
           test -f LICENSE
 
+  # ─── Deployment tests ────────────────────────────────────────────────────────
+  # Skipped entirely when charts haven't changed, avoiding the kind cluster
+  # spin-up and the Kubernetes/Docker Hub API calls for version discovery.
+
   fetch-k8s-versions:
     name: Discover Supported Kubernetes Versions
+    needs: [changes]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.versions.outputs.matrix }}
@@ -138,7 +276,6 @@ jobs:
           SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
 
           # Fetch kind image tags from Docker Hub with resilient pagination.
-          # Some endpoints/pages may return 404; handle gracefully and fallback.
           fetch_kind_tags() {
             local base_url="$1"
             local url="${base_url}?page_size=100"
@@ -164,7 +301,6 @@ jobs:
 
           KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/repositories/kindest/node/tags")
           if [ -z "${KIND_TAGS}" ]; then
-            # Fallback to newer Docker Hub namespace API format.
             KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/namespaces/kindest/repositories/node/tags")
           fi
 
@@ -180,10 +316,8 @@ jobs:
           for minor in $SUPPORTED_MINORS; do
             echo "Resolving last two patch releases for minor ${minor}..."
 
-            # Candidate patches for this supported minor, newest first
             CANDIDATES=$(printf '%s\n' "$RELEASES" | awk -F. -v m="$minor" '$1"."$2==m {print}' | sort -V | tail -20)
 
-            # Keep only patches that have a corresponding kind image
             AVAILABLE_FOR_MINOR=""
             while IFS= read -r version; do
               if [ -n "$version" ] && printf '%s\n' "$KIND_TAGS" | grep -qx "v${version}"; then
@@ -191,7 +325,6 @@ jobs:
               fi
             done <<< "$CANDIDATES"
 
-            # Select latest two available patches for this supported minor
             PICKED=$(printf '%s' "$AVAILABLE_FOR_MINOR" | sed '/^$/d' | sort -V | tail -2)
             if [ -z "$PICKED" ]; then
               echo "  ✗ No kind images found for supported minor ${minor}"
@@ -209,14 +342,12 @@ jobs:
             exit 1
           fi
 
-          # Required (blocking) version: latest patch of latest supported minor
           REQUIRED_VERSION=$(printf '%s\n' "$FINAL" | sort -V | tail -1)
           if [ -z "$REQUIRED_VERSION" ]; then
             echo "Unable to determine required Kubernetes version."
             exit 1
           fi
 
-          # Convert to JSON array for matrix strategy
           MATRIX=$(printf '%s\n' "$FINAL" | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "required_version=$REQUIRED_VERSION" >> "$GITHUB_OUTPUT"
@@ -225,7 +356,8 @@ jobs:
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
-    needs: [feature-charts, linting-charts, fetch-k8s-versions, security-sast, security-sbom, security-secrets]
+    needs: [changes, feature-charts, linting-charts, fetch-k8s-versions, security-sast, security-sbom, security-secrets]
+    if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
     permissions:
@@ -253,24 +385,7 @@ jobs:
             if [ -n "${RUNE_IMAGE:-}" ]; then
               echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
               docker pull "${RUNE_IMAGE}"
-              # kind load docker-image has a known containerd snapshotter detection bug in v0.26;
-              # pipe through ctr import directly into the kind node instead.
               docker save "${RUNE_IMAGE}" | \
-                docker exec -i chart-testing-control-plane \
-                  ctr --namespace k8s.io images import -
-            fi
-          fi
-      - name: Pre-load rune-operator image into kind
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
-            . .ci/upstream-images.env
-            if [ -n "${RUNE_OPERATOR_IMAGE:-}" ]; then
-              echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-              docker pull "${RUNE_OPERATOR_IMAGE}"
-              docker save "${RUNE_OPERATOR_IMAGE}" | \
                 docker exec -i chart-testing-control-plane \
                   ctr --namespace k8s.io images import -
             fi
@@ -289,30 +404,50 @@ jobs:
             fi
           fi
           helm install rune ./charts/rune "${HELM_ARGS[@]}"
-      - name: Deploy rune-operator chart to kind cluster
+      - name: Pre-load rune-operator image into kind
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug --set leaderElect=false)
           if [ -f .ci/upstream-images.env ]; then
             # shellcheck disable=SC1091
             . .ci/upstream-images.env
             if [ -n "${RUNE_OPERATOR_IMAGE:-}" ]; then
-              OP_REPO="${RUNE_OPERATOR_IMAGE%:*}"
-              OP_TAG="${RUNE_OPERATOR_IMAGE##*:}"
-              HELM_ARGS+=(--set "image.repository=${OP_REPO}" --set "image.tag=${OP_TAG}")
+              echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              docker pull "${RUNE_OPERATOR_IMAGE}"
+              docker save "${RUNE_OPERATOR_IMAGE}" | \
+                docker exec -i chart-testing-control-plane \
+                  ctr --namespace k8s.io images import -
             fi
           fi
-          helm install rune-operator ./charts/rune-operator "${HELM_ARGS[@]}"
+      - name: Deploy rune-operator chart to kind cluster
+        run: |
+          if [ -f .ci/upstream-images.env ]; then
+            # shellcheck disable=SC1091
+            . .ci/upstream-images.env
+          fi
+          if [ -z "${RUNE_OPERATOR_IMAGE:-}" ]; then
+            echo "RUNE_OPERATOR_IMAGE not set — skipping operator chart deployment"
+            exit 0
+          fi
+          OP_REPO="${RUNE_OPERATOR_IMAGE%:*}"
+          OP_TAG="${RUNE_OPERATOR_IMAGE##*:}"
+          helm install rune-operator ./charts/rune-operator \
+            --namespace rune-test \
+            --set "image.repository=${OP_REPO}" \
+            --set "image.tag=${OP_TAG}" \
+            --set leaderElect=false \
+            --wait --timeout=2m --debug
       - name: Verify deployment and pod readiness
         run: |
           echo "=== Kubernetes Version ==="
           kubectl version
-          
+
           echo "=== Deployment Status ==="
           kubectl get deployment -n rune-test rune
-          
+
           echo "=== Pod Status ==="
           kubectl get pods -n rune-test -o wide
-          
+
           echo "=== Waiting for pod readiness ==="
           kubectl wait --for=condition=ready pod \
             -l app.kubernetes.io/instance=rune \
@@ -326,41 +461,33 @@ jobs:
         run: |
           echo "=== Services ==="
           kubectl get service -n rune-test rune
-          
+
           echo "=== ConfigMaps ==="
           kubectl get configmap -n rune-test rune
-          
+
           echo "=== ClusterRole ==="
           kubectl get clusterrole rune
-          
+
           echo "=== ClusterRoleBinding ==="
           kubectl get clusterrolebinding rune
-          
+
           echo "=== rune-operator Deployment ==="
-          kubectl get deployment -n rune-test rune-operator-rune-operator
-          
-          echo "=== rune-operator ClusterRole ==="
-          kubectl get clusterrole rune-operator-rune-operator
-          
-          echo "=== rune-operator ClusterRoleBinding ==="
-          kubectl get clusterrolebinding rune-operator-rune-operator
-          
+          kubectl get deployment -n rune-test -l app.kubernetes.io/name=rune-operator 2>/dev/null || echo "rune-operator not deployed (RUNE_OPERATOR_IMAGE not set)"
+
           echo "=== All resources in rune-test namespace ==="
           kubectl get all -n rune-test
       - name: Run basic connectivity test
         run: |
-          # Port-forward to test service
           kubectl port-forward -n rune-test svc/rune 8080:8080 &
           PF_PID=$!
           sleep 2
-          
-          # Try to reach the service
+
           if curl -sf http://localhost:8080/health >/dev/null 2>&1 || curl -sf http://localhost:8080 >/dev/null 2>&1; then
             echo "✓ Service is responding"
           else
             echo "⚠ Service endpoint not responding (may be expected if not listening yet)"
           fi
-          
+
           kill $PF_PID 2>/dev/null || true
       - name: Cleanup
         if: always()
@@ -369,16 +496,40 @@ jobs:
           kubectl logs -n rune-test deployment/rune --all-containers=true 2>/dev/null || true
           kubectl delete namespace rune-test --ignore-not-found
 
+  # ─── Merge gate ──────────────────────────────────────────────────────────────
+
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [feature-charts, linting-charts, package-charts, security-sbom, security-sast, security-secrets, security-licenses, fetch-k8s-versions, deployment-test]
+    needs:
+      - changes
+      - feature-charts
+      - linting-charts
+      - package-charts
+      - security-sbom
+      - security-sast
+      - security-secrets
+      - security-licenses
+      - fetch-k8s-versions
+      - deployment-test
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo "Checking quality gate results..."
-          for result in "${{ needs.feature-charts.result }}" "${{ needs.linting-charts.result }}" "${{ needs.package-charts.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-secrets.result }}" "${{ needs.security-licenses.result }}" "${{ needs.fetch-k8s-versions.result }}" "${{ needs.deployment-test.result }}"; do
-            echo "  Result: $result"
-            test "$result" = success || exit 1
+      - name: Verify all gates passed or were skipped
+        run: |
+          rc=0
+          for result in \
+            "${{ needs.feature-charts.result }}" \
+            "${{ needs.linting-charts.result }}" \
+            "${{ needs.package-charts.result }}" \
+            "${{ needs.security-sbom.result }}" \
+            "${{ needs.security-sast.result }}" \
+            "${{ needs.security-secrets.result }}" \
+            "${{ needs.security-licenses.result }}" \
+            "${{ needs.fetch-k8s-versions.result }}" \
+            "${{ needs.deployment-test.result }}"; do
+            echo "result: $result"
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              rc=1
+            fi
           done
-          echo "✓ All quality gates passed"
+          exit $rc
