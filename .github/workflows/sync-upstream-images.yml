@@ -18,7 +18,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   sync-tags:
@@ -43,6 +43,7 @@ jobs:
       - name: Sync to PR branches and non-protected branches
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -137,5 +138,20 @@ jobs:
 
             git add .ci/upstream-images.env charts/rune/values.yaml || true
             git commit -m "chore(ci): sync ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_REPO}"
-            git push origin "HEAD:${branch}"
+
+            if [ "${branch}" = "main" ]; then
+              SYNC_BRANCH="ci/sync-main-$(git rev-parse --short HEAD)"
+              git checkout -b "${SYNC_BRANCH}"
+              git push origin "${SYNC_BRANCH}"
+              gh pr create \
+                --title "chore(ci): sync ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_REPO} to main" \
+                --body "Automated image tag sync. Auto-merges when CI passes." \
+                --base main \
+                --head "${SYNC_BRANCH}" \
+                --label "automated" 2>/dev/null || true
+              gh pr merge "${SYNC_BRANCH}" --auto --squash 2>/dev/null || true
+              git checkout "${branch}"
+            else
+              git push origin "HEAD:${branch}"
+            fi
           done <<< "${TARGET_BRANCHES}"
