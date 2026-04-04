@@ -49,8 +49,12 @@ jobs:
 
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
+          # Only include PR branches from this same repo (not forks) to avoid
+          # pushing to refs that don't exist in origin.
           PR_BRANCHES=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "${API}/pulls?state=open&per_page=100" | jq -r '.[].head.ref')
+            "${API}/pulls?state=open&per_page=100" | \
+            jq -r --arg repo "${GITHUB_REPOSITORY}" \
+              '.[] | select(.head.repo.full_name == $repo) | .head.ref')
 
           ALL_BRANCHES=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
             "${API}/branches?per_page=100" | jq -r '.[].name' || true)
@@ -69,7 +73,10 @@ jobs:
             [ -n "${branch}" ] || continue
             echo "Processing branch: ${branch}"
 
-            git fetch origin "${branch}" --depth=1
+            if ! git fetch origin "${branch}" --depth=1 2>/dev/null; then
+              echo "  ✗ Could not fetch ${branch} — skipping"
+              continue
+            fi
             git checkout -B "${branch}" "origin/${branch}"
 
             python3 .ci/sync_image_tag.py
@@ -81,7 +88,6 @@ jobs:
 
             git add .ci/upstream-images.env charts/rune/values.yaml charts/rune-operator/values.yaml || true
             git commit -m "chore(ci): sync ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_REPO}"
-
             if [ "${branch}" = "main" ]; then
               SYNC_BRANCH="ci/sync-main-$(git rev-parse --short HEAD)"
               git checkout -b "${SYNC_BRANCH}"
