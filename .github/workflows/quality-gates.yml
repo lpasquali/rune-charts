@@ -522,8 +522,11 @@ jobs:
       - name: Verify all gates passed or were skipped
         run: |
           rc=0
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes job did not succeed (result: ${{ needs.changes.result }}); failing merge gate."
+            rc=1
+          fi
           for result in \
-            "${{ needs.changes.result }}" \
             "${{ needs.feature-charts.result }}" \
             "${{ needs.linting-charts.result }}" \
             "${{ needs.package-charts.result }}" \
@@ -538,8 +541,4 @@ jobs:
               rc=1
             fi
           done
-          if [ "${{ needs.changes.result }}" != "success" ]; then
-            echo "changes job did not succeed (result: ${{ needs.changes.result }}); failing merge gate."
-            rc=1
-          fi
           exit $rc
