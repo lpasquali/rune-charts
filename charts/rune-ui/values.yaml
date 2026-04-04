@@ -1,0 +1,49 @@
+# RUNE UI Helm Values
+replicaCount: 1
+
+image:
+  repository: ghcr.io/lpasquali/rune-ui
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 80
+
+rune:
+  apiBaseUrl: "http://rune-api.default.svc.cluster.local:8080"
+  apiTokenSecretRef: "default/rune-api-token"
+  tenant: "default"
+  
+storage:
+  # s3 or pvc
+  provider: "s3"
+  s3:
+    bucket: "rune-benchmarks"
+    region: "us-east-1"
+    endpoint: "http://minio.minio-system.svc.cluster.local:9000" # Airgapped default
+    accessKeySecretRef: "default/rune-s3-creds"
+  pvc:
+    enabled: false
+    mountPath: "/data"
+    existingClaim: "rune-ui-pvc"
+
+security:
+  # IEC 62443 4-1 ML4 compliance
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi

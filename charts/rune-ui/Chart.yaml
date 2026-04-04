@@ -1,0 +1,15 @@
+apiVersion: v2
+name: rune-ui
+description: A Helm chart for the RUNE UI (The Face of the RUNE ecosystem)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - rune
+  - ui
+  - llm
+  - benchmark
+  - kubernetes
+maintainers:
+  - name: lpasquali
+    email: luca.pasquali@example.com
