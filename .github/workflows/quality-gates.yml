@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ─── Path-change detection ──────────────────────────────────────────────────
   # charts=true: chart templates, values, CI image env, or workflow files changed.
@@ -58,6 +62,7 @@ jobs:
       - uses: azure/setup-helm@v4
       - run: |
           helm template rune ./charts/rune >/tmp/rune-rendered.yaml
+          helm template rune-operator ./charts/rune-operator >/tmp/rune-operator-rendered.yaml
 
   linting-charts:
     name: RuneGate/Linting/Charts
@@ -67,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: helm lint ./charts/rune
+      - run: helm lint ./charts/rune && helm lint ./charts/rune-operator
 
   package-charts:
     name: RuneGate/Regression/Chart-Package
@@ -80,6 +85,7 @@ jobs:
       - run: |
           mkdir -p dist
           helm package ./charts/rune --destination dist/
+          helm package ./charts/rune-operator --destination dist/
 
   # ─── Security gates ──────────────────────────────────────────────────────────
 
@@ -104,8 +110,12 @@ jobs:
       - name: Scan SBOM — Grype + Trivy (IEC 62443 4-1 ML4 SVV-3 / DM-4)
         run: |
           set -euo pipefail
-          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 -c /work/.grype.yaml sbom:/work/sbom/rune-chart.cdx.json -o json > sbom/rune-chart-grype.json
-          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/rune-chart.cdx.json --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          # Grype scans the chart directory directly (avoids CycloneDX root-component
+          # type compatibility issues between Syft and Grype parsers).
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.88.0 -c /work/.grype.yaml dir:/work/charts/rune -o json > sbom/rune-chart-grype.json
+          # Trivy scans chart dir directly — avoids CycloneDX root-component type
+          # parse error (Syft SBOM is retained for SLSA attestation only)
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 fs /work/charts/rune --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
       - name: Enforce CVE policy — IEC 62443 4-1 ML4 DM-4
         env:
           BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
@@ -350,7 +360,7 @@ jobs:
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
-    needs: [changes, feature-charts, linting-charts, fetch-k8s-versions]
+    needs: [changes, feature-charts, linting-charts, fetch-k8s-versions, security-sast, security-sbom, security-secrets]
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
@@ -398,6 +408,39 @@ jobs:
             fi
           fi
           helm install rune ./charts/rune "${HELM_ARGS[@]}"
+      - name: Pre-load rune-operator image into kind
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f .ci/upstream-images.env ]; then
+            # shellcheck disable=SC1091
+            . .ci/upstream-images.env
+            if [ -n "${RUNE_OPERATOR_IMAGE:-}" ]; then
+              echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              docker pull "${RUNE_OPERATOR_IMAGE}"
+              docker save "${RUNE_OPERATOR_IMAGE}" | \
+                docker exec -i chart-testing-control-plane \
+                  ctr --namespace k8s.io images import -
+            fi
+          fi
+      - name: Deploy rune-operator chart to kind cluster
+        run: |
+          if [ -f .ci/upstream-images.env ]; then
+            # shellcheck disable=SC1091
+            . .ci/upstream-images.env
+          fi
+          if [ -z "${RUNE_OPERATOR_IMAGE:-}" ]; then
+            echo "RUNE_OPERATOR_IMAGE not set — skipping operator chart deployment"
+            exit 0
+          fi
+          OP_REPO="${RUNE_OPERATOR_IMAGE%:*}"
+          OP_TAG="${RUNE_OPERATOR_IMAGE##*:}"
+          helm install rune-operator ./charts/rune-operator \
+            --namespace rune-test \
+            --set "image.repository=${OP_REPO}" \
+            --set "image.tag=${OP_TAG}" \
+            --set leaderElect=false \
+            --wait --timeout=2m --debug
       - name: Verify deployment and pod readiness
         run: |
           echo "=== Kubernetes Version ==="
@@ -431,6 +474,9 @@ jobs:
 
           echo "=== ClusterRoleBinding ==="
           kubectl get clusterrolebinding rune
+
+          echo "=== rune-operator Deployment ==="
+          kubectl get deployment -n rune-test -l app.kubernetes.io/name=rune-operator 2>/dev/null || echo "rune-operator not deployed (RUNE_OPERATOR_IMAGE not set)"
 
           echo "=== All resources in rune-test namespace ==="
           kubectl get all -n rune-test

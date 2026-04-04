@@ -1,0 +1,15 @@
+apiVersion: v2
+name: rune-operator
+description: Helm chart for the RUNE Kubernetes operator
+type: application
+version: 0.1.0
+appVersion: "0.0.0a1"
+keywords:
+  - rune
+  - operator
+  - benchmarking
+home: https://github.com/lpasquali/rune-operator
+sources:
+  - https://github.com/lpasquali/rune-operator
+maintainers:
+  - name: lpasquali
