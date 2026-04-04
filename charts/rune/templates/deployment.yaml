@@ -49,7 +49,19 @@ spec:
         - name: app-cache
           emptyDir: {}
         - name: app-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "rune.fullname" .)) }}
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+        {{- if .Values.telemetry.enabled }}
+        - name: telemetry-data
+          emptyDir: {}
+        - name: telemetry-config
+          configMap:
+            name: {{ include "rune.fullname" . }}-telemetry
+        {{- end }}
         {{- if .Values.rune.kubeconfigSecret }}
         - name: kubeconfig
           secret:
@@ -275,6 +287,43 @@ spec:
             {{- with .Values.rune.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+
+            # --- S3 storage ---
+            {{- if .Values.s3.enabled }}
+            - name: RUNE_S3_ENABLED
+              value: "1"
+            - name: RUNE_S3_BUCKET
+              value: {{ required "s3.bucket is required when s3.enabled is true" .Values.s3.bucket | quote }}
+            - name: RUNE_S3_REGION
+              value: {{ required "s3.region is required when s3.enabled is true" .Values.s3.region | quote }}
+            {{- if .Values.s3.endpoint }}
+            - name: RUNE_S3_ENDPOINT
+              value: {{ .Values.s3.endpoint | quote }}
+            {{- end }}
+            {{- if .Values.s3.existingSecret }}
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.s3.existingSecret }}
+                  key: S3_ACCESS_KEY_ID
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.s3.existingSecret }}
+                  key: S3_SECRET_ACCESS_KEY
+            {{- else if $awsSecretName }}
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $awsSecretName }}
+                  key: AWS_ACCESS_KEY_ID
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $awsSecretName }}
+                  key: AWS_SECRET_ACCESS_KEY
+            {{- end }}
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "rune.fullname" . }}
@@ -307,8 +356,39 @@ spec:
               mountPath: {{ .Values.cloud.remoteKubernetes.mountPath }}
               readOnly: true
             {{- end }}
+            {{- if .Values.telemetry.enabled }}
+            - name: telemetry-data
+              mountPath: /telemetry
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.telemetry.enabled }}
+        # Telemetry sidecar — polls Redfish/PDU endpoints and writes power
+        # data to the shared /telemetry volume.
+        - name: telemetry
+          image: {{ .Values.telemetry.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: telemetry-data
+              mountPath: /telemetry
+            - name: telemetry-config
+              mountPath: /etc/rune-telemetry
+              readOnly: true
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

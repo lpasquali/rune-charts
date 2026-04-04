@@ -306,3 +306,44 @@ cloud:
       secretPath: "rune/azure-credentials"    # keys: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
     gcp:
       secretPath: "rune/gcp-credentials"      # key: credentials.json (raw JSON content)
+
+# ---------------------------------------------------------------------------
+# Issue #18 — S3 / PVC storage persistence
+# ---------------------------------------------------------------------------
+
+# persistence: mounts a PersistentVolumeClaim at /app/.rune-api so the SQLite
+# job store survives pod restarts.  When disabled an emptyDir is used (data
+# is lost on restart).
+persistence:
+  enabled: false
+  storageClass: ""           # "" → cluster default StorageClass
+  size: 10Gi
+  accessMode: ReadWriteOnce
+  # Set to an existing PVC name to skip creating a new one.
+  existingClaim: ""
+
+# s3: enables S3-compatible object storage for benchmark artefacts.
+# Credentials are injected as environment variables.  Use existingSecret
+# or cloud.aws.existingSecret for production; avoid inline keys.
+s3:
+  enabled: false
+  bucket: ""
+  region: ""
+  endpoint: ""               # leave empty for AWS S3; set for MinIO / Ceph RGW
+  existingSecret: ""         # Secret must contain: S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+
+# ---------------------------------------------------------------------------
+# Issue #19 — HIL power telemetry reconciliation sidecar
+# ---------------------------------------------------------------------------
+
+# telemetry: injects a sidecar that polls Redfish/PDU endpoints and writes
+# power telemetry to a shared emptyDir volume at /telemetry.
+telemetry:
+  enabled: false
+  image: ghcr.io/lpasquali/rune-telemetry:main-165ce44
+  # Redfish REST endpoint of the BMC (e.g. https://bmc.lab.example.com)
+  redfishEndpoint: ""
+  # PDU SNMP/REST endpoint (e.g. http://pdu.lab.example.com)
+  pduEndpoint: ""
+  # How often (seconds) the sidecar polls both endpoints.
+  pollIntervalSeconds: 30
