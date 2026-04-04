@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   # ─── Path-change detection ──────────────────────────────────────────────────
-  # charts=true: chart templates, values, CI image env, or workflow files changed.
+  # charts=true: files under charts/ or .ci/ changed.
   # When charts=false (e.g. README-only), every job below is skipped, including
   # the kind cluster spin-up and the K8s version discovery API calls.
   changes:
@@ -523,6 +523,7 @@ jobs:
         run: |
           rc=0
           for result in \
+            "${{ needs.changes.result }}" \
             "${{ needs.feature-charts.result }}" \
             "${{ needs.linting-charts.result }}" \
             "${{ needs.package-charts.result }}" \
@@ -537,4 +538,8 @@ jobs:
               rc=1
             fi
           done
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes job did not succeed (result: ${{ needs.changes.result }}); failing merge gate."
+            rc=1
+          fi
           exit $rc

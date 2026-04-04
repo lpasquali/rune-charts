@@ -25,7 +25,7 @@ If you're adding a new benchmark suite, ensure it is fully reproducible and clea
 
 ## Make a Pull Request
 
-At this point, you should switch back to your master branch and make sure it's up to date with rune's master branch. Tests should pass on your branch.
+At this point, you should switch back to your main branch and make sure it's up to date with rune's main branch. Tests should pass on your branch.
 
 ## Code of Conduct
 
