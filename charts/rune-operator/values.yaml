@@ -38,14 +38,13 @@ securityContext:
       - ALL
 
 # ---------------------------------------------------------------------------
-# Issue #17 — CSI Secret Store / Vault integration (opt-in scaffold)
-# Set vault.enabled: true and configure address/role/secretPath to activate
-# the VaultAuth resource and pod annotation injection.
+# Issue #17 — Vault Secrets Operator (VSO) integration (opt-in scaffold)
+# Set vault.enabled: true and configure role/secretPath to activate the
+# VaultAuth and VaultStaticSecret CRDs (requires HashiCorp VSO installed).
 # Standard Kubernetes Secrets remain the default.
 # ---------------------------------------------------------------------------
 vault:
   enabled: false
-  address: ""          # e.g. https://vault.example.com:8200
   role: ""             # Vault Kubernetes Auth role bound to the ServiceAccount
   secretPath: ""       # e.g. secret/data/rune/api-token
 

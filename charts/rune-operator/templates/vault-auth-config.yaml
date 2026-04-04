@@ -2,7 +2,10 @@
 ---
 # VaultAuth scaffold — ties the operator's ServiceAccount to a Vault Kubernetes
 # Auth role.  Requires the Vault Secrets Operator (VSO) CRDs to be installed.
-# See docs/vault-integration.md for setup instructions.
+# For full setup instructions see the docs/vault-integration.md guide in the
+# lpasquali/rune-operator repository.
+#
+# Note: vault.role and vault.secretPath must be set when vault.enabled: true.
 apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultAuth
 metadata:
@@ -13,7 +16,7 @@ spec:
   method: kubernetes
   mount: kubernetes
   kubernetes:
-    role: {{ .Values.vault.role | quote }}
+    role: {{ required "vault.role is required when vault.enabled is true" .Values.vault.role | quote }}
     serviceAccount: {{ include "rune-operator.serviceAccountName" . }}
     audiences:
       - vault
@@ -29,7 +32,7 @@ metadata:
 spec:
   type: kv-v2
   mount: secret
-  path: {{ trimPrefix "secret/data/" .Values.vault.secretPath | quote }}
+  path: {{ required "vault.secretPath is required when vault.enabled is true" .Values.vault.secretPath | trimPrefix "secret/data/" | quote }}
   destination:
     name: {{ include "rune-operator.fullname" . }}-vault-token
     create: true

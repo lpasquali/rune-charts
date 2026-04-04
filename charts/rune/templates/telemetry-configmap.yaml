@@ -9,11 +9,11 @@ data:
   config.yaml: |
     # Rune telemetry sidecar configuration
     poll_interval_seconds: {{ .Values.telemetry.pollIntervalSeconds }}
-    {{- if .Values.telemetry.redfishEndpoint }}
+    {{ if .Values.telemetry.redfishEndpoint }}
     redfish_endpoint: {{ .Values.telemetry.redfishEndpoint | quote }}
-    {{- end }}
-    {{- if .Values.telemetry.pduEndpoint }}
+    {{ end }}
+    {{ if .Values.telemetry.pduEndpoint }}
     pdu_endpoint: {{ .Values.telemetry.pduEndpoint | quote }}
-    {{- end }}
+    {{ end }}
     output_dir: /telemetry
 {{- end }}

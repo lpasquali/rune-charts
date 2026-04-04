@@ -340,7 +340,7 @@ s3:
 # power telemetry to a shared emptyDir volume at /telemetry.
 telemetry:
   enabled: false
-  image: ghcr.io/lpasquali/rune-telemetry:latest
+  image: ghcr.io/lpasquali/rune-telemetry:main-165ce44
   # Redfish REST endpoint of the BMC (e.g. https://bmc.lab.example.com)
   redfishEndpoint: ""
   # PDU SNMP/REST endpoint (e.g. http://pdu.lab.example.com)
