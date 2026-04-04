@@ -113,7 +113,9 @@ jobs:
           # Grype scans the chart directory directly (avoids CycloneDX root-component
           # type compatibility issues between Syft and Grype parsers).
           docker run --rm -v "${PWD}:/work" anchore/grype:v0.88.0 -c /work/.grype.yaml dir:/work/charts/rune -o json > sbom/rune-chart-grype.json
-          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/rune-chart.cdx.json --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          # Trivy scans chart dir directly — avoids CycloneDX root-component type
+          # parse error (Syft SBOM is retained for SLSA attestation only)
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 fs /work/charts/rune --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
       - name: Enforce CVE policy — IEC 62443 4-1 ML4 DM-4
         env:
           BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
