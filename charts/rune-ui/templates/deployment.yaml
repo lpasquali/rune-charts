@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rune-ui.fullname" . }}
+  labels:
+    {{- include "rune-ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "rune-ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rune-ui.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: rune-ui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: RUNE_API_URL
+              value: {{ .Values.rune.apiBaseUrl | quote }}
+            - name: RUNE_API_TENANT
+              value: {{ .Values.rune.tenant | quote }}
+            - name: STORAGE_PROVIDER
+              value: {{ .Values.storage.provider | quote }}
+            - name: S3_BUCKET
+              value: {{ .Values.storage.s3.bucket | quote }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.storage.s3.endpoint | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.security | nindent 12 }}
+          {{- if eq .Values.storage.provider "pvc" }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.storage.pvc.mountPath }}
+          {{- end }}
+      {{- if eq .Values.storage.provider "pvc" }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.pvc.existingClaim }}
+      {{- end }}
