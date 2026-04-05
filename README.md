@@ -1,27 +1,13 @@
-# rune-charts
+# RUNE (Reliability Use-case Numeric Evaluator) — Charts
 
-Standalone Helm chart repository for RUNE.
+Helm charts and deployment assets for the RUNE platform.
 
-## Contents
+## 📖 Documentation
+All documentation is consolidated in **[rune-docs](https://github.com/lpasquali/rune-docs)**.
 
-- `charts/rune` — the primary Helm chart for deploying the RUNE API server workload
-- `.github/workflows/` — CI and quality/security gates for chart linting, rendering, packaging, and scanning
+## 🛡️ Compliance
+- **ML4**: This repository aligns with **IEC 62443-4-1 ML4** secure development requirements.
+- **SLSA**: Build provenance follows **SLSA Level 3**.
 
-## Local Usage
-
-```bash
-helm lint ./charts/rune
-helm template rune ./charts/rune >/tmp/rune-rendered.yaml
-helm package ./charts/rune --destination dist/
-```
-
-## Secrets Handling
-
-The chart includes a template secret values example intended for encrypted workflows using SOPS/age and `helm-secrets`.
-
-See `charts/rune/secret.values.example.yaml`.
-
-## Relationship to Other Repositories
-
-- application source: `rune`
-- documentation: `rune-docs`
+## 📜 License
+Apache License 2.0. See [LICENSE](LICENSE).
