@@ -4,3 +4,20 @@ dist/
 *.tgz
 *.prov
 sbom/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# IDE
+*.swp
+*.swo
