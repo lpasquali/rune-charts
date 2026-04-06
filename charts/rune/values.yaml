@@ -7,7 +7,7 @@ image:
   repository: ghcr.io/lpasquali/rune
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0.0a4"
+  tag: "v0.0.0a5"
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
