@@ -27,7 +27,7 @@ jobs:
     outputs:
       charts: ${{ steps.diff.outputs.charts }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Compute changed paths
@@ -61,7 +61,7 @@ jobs:
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: |
           helm template rune ./charts/rune >/tmp/rune-rendered.yaml
@@ -73,7 +73,7 @@ jobs:
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: helm lint ./charts/rune && helm lint ./charts/rune-operator
 
@@ -83,7 +83,7 @@ jobs:
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - run: |
           mkdir -p dist
@@ -102,7 +102,7 @@ jobs:
       attestations: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - name: Generate SBOM — CycloneDX via Syft (IEC 62443 4-1 ML4 SM-9)
         run: |
@@ -190,7 +190,7 @@ jobs:
     name: RuneGate/Security/SecretScanning
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
@@ -204,7 +204,7 @@ jobs:
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Trivy config scan
         run: |
           docker run --rm \
@@ -217,7 +217,7 @@ jobs:
     name: RuneGate/Security/LicenseCompliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: |
           test -f LICENSE
 
@@ -369,7 +369,7 @@ jobs:
         k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
       - name: Start kind cluster with Kubernetes ${{ matrix.k8s-version }}
         uses: helm/kind-action@v1.12.0
