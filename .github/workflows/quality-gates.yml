@@ -176,7 +176,7 @@ jobs:
               raise SystemExit(1)
           PY
       - name: Attest SBOM provenance — SLSA L3 (IEC 62443 4-1 ML4 SM-9)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: sbom/rune-chart.cdx.json
       - uses: actions/upload-artifact@v4
