@@ -14,5 +14,6 @@ home: https://github.com/lpasquali/rune-charts
 sources:
   - https://github.com/lpasquali/rune-charts
   - https://github.com/lpasquali/rune
+license: Apache-2.0
 maintainers:
   - name: luca
