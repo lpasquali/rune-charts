@@ -179,7 +179,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: sbom/rune-chart.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: sbom-security-outputs
