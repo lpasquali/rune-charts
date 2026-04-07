@@ -20,6 +20,9 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   sync-tags:
     name: Sync image tag to active branches
@@ -29,7 +32,7 @@ jobs:
       IMAGE_TAG: ${{ github.event.client_payload.image_tag || inputs.image_tag }}
       SOURCE_REPO: ${{ github.event.client_payload.source_repo || inputs.source_repo || github.repository }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
