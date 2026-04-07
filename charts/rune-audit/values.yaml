@@ -1,0 +1,64 @@
+image:
+  repository: ghcr.io/lpasquali/rune-audit
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+schedule: "0 0 * * *" # Daily at midnight
+failedJobsHistoryLimit: 1
+successfulJobsHistoryLimit: 3
+concurrencyPolicy: Forbid
+
+# Command arguments for the audit (e.g. collect github-artifacts)
+args: ["collect", "github-artifacts"]
+
+env:
+  # GITHUB_TOKEN should be provided via a secret
+  - name: GITHUB_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: rune-audit-secrets
+        key: GITHUB_TOKEN
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 999
+  runAsGroup: 999
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
