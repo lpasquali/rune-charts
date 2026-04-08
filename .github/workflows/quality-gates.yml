@@ -25,7 +25,7 @@ jobs:
     outputs:
       charts: ${{ steps.diff.outputs.charts }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
       - name: Compute changed paths
@@ -78,8 +78,8 @@ jobs:
       attestations: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
       - name: Generate SBOM — CycloneDX via Syft (IEC 62443 4-1 ML4 SM-9)
         run: |
           set -euo pipefail
@@ -144,10 +144,10 @@ jobs:
               raise SystemExit(1)
           PY
       - name: Attest SBOM provenance — SLSA L3 (IEC 62443 4-1 ML4 SM-9)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4
         with:
           subject-path: sbom/rune-chart.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         if: always()
         with:
           name: sbom-security-outputs
@@ -159,7 +159,7 @@ jobs:
     name: RuneGate/Security/LicenseCompliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - run: test -f LICENSE
 
   # ─── Deployment tests (kind cluster matrix) ────────────────────────────────
@@ -273,10 +273,10 @@ jobs:
         k8s-version: ${{ fromJson(needs.fetch-k8s-versions.outputs.versions) }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
       - name: Start kind cluster with Kubernetes ${{ matrix.k8s-version }}
-        uses: helm/kind-action@v1.12.0
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           node_image: kindest/node:v${{ matrix.k8s-version }}
           wait: 120s
@@ -383,7 +383,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR body structure
-        uses: actions/github-script@v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -469,7 +469,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Approve PR via Automated Quality Gates
-        uses: actions/github-script@v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             await github.rest.pulls.createReview({
