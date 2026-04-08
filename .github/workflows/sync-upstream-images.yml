@@ -32,7 +32,7 @@ jobs:
       IMAGE_TAG: ${{ github.event.client_payload.image_tag || inputs.image_tag }}
       SOURCE_REPO: ${{ github.event.client_payload.source_repo || inputs.source_repo || github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
