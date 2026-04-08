@@ -1,27 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Sync Upstream Image Tags
 
 on:
   repository_dispatch:
     types: [image-published]
   workflow_dispatch:
-    inputs:
-      image_name:
-        description: Full image name (e.g. ghcr.io/lpasquali/rune)
-        required: true
-      image_tag:
-        description: Image tag to sync
-        required: true
-      source_repo:
-        description: Source repository name
-        required: false
-        default: manual
 
 permissions:
   contents: write
   pull-requests: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   sync-tags:

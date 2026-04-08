@@ -1,0 +1,10 @@
+apiVersion: v2
+name: rune-audit
+description: RUNE Audit — IEC 62443 compliance evidence collector and report generator
+type: application
+version: 0.1.1
+appVersion: "v0.1.1"
+license: Apache-2.0
+maintainers:
+  - name: lpasquali
+    email: lpasquali@users.noreply.github.com
