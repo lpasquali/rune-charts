@@ -6,54 +6,9 @@ metadata:
     {{- include "rune-audit.labels" . | nindent 4 }}
 spec:
   schedule: {{ .Values.schedule | quote }}
-  concurrencyPolicy: {{ .Values.concurrencyPolicy }}
-  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
-  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
-  jobTemplate:
-    spec:
-      template:
-        metadata:
-          {{- with .Values.podAnnotations }}
-          annotations:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          labels:
-            {{- include "rune-audit.labels" . | nindent 12 }}
-        spec:
-          {{- with .Values.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          serviceAccountName: {{ include "rune-audit.serviceAccountName" . }}
-          securityContext:
-            {{- toYaml .Values.podSecurityContext | nindent 12 }}
-          containers:
-          - name: {{ .Chart.Name }}
-            securityContext:
-              {{- toYaml .Values.securityContext | nindent 12 }}
-            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-            imagePullPolicy: {{ .Values.image.pullPolicy }}
-            args: ["collect", "github-artifacts"]
-            env:
-              {{- toYaml .Values.env | nindent 14 }}
-            resources:
-              {{- toYaml .Values.resources | nindent 14 }}
-          restartPolicy: OnFailure
-          {{- with .Values.nodeSelector }}
-          nodeSelector:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.affinity }}
-          affinity:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.tolerations }}
-          tolerations:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  concurrencyPolicy: {{ .Values.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit | default 3 }}
   jobTemplate:
     metadata:
       labels:
@@ -62,6 +17,10 @@ spec:
       backoffLimit: 1
       template:
         metadata:
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           labels:
             {{- include "rune-audit.selectorLabels" . | nindent 12 }}
         spec:
