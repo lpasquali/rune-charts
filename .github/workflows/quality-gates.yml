@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Quality Gates (Rune Charts)
 
 on:
@@ -17,10 +18,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ─── Path-change detection ──────────────────────────────────────────────────
-  # charts=true: files under charts/ or .ci/ changed.
-  # When charts=false (e.g. README-only), every job below is skipped, including
-  # the kind cluster spin-up and the K8s version discovery API calls.
+  # ─── Path-change detection (repo-specific) ─────────────────────────────────
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
@@ -53,45 +51,23 @@ jobs:
             echo "charts=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # ─── Chart gates ─────────────────────────────────────────────────────────────
+  # ─── Shared: secret scanning (gitleaks) ─────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@v0.1.0
+    permissions:
+      contents: read
 
-  feature-charts:
-    name: RuneGate/Feature/Charts
-    needs: [changes]
-    if: needs.changes.outputs.charts == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - run: |
-          helm template rune ./charts/rune >/tmp/rune-rendered.yaml
-          helm template rune-operator ./charts/rune-operator >/tmp/rune-operator-rendered.yaml
+  # ─── Shared: Helm quality (lint + template + Trivy config) ──────────────────
+  helm-quality:
+    name: Helm Quality
+    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@v0.1.0
+    with:
+      chart-dirs: "charts/rune charts/rune-operator charts/rune-ui"
+    permissions:
+      contents: read
 
-  linting-charts:
-    name: RuneGate/Linting/Charts
-    needs: [changes]
-    if: needs.changes.outputs.charts == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - run: helm lint ./charts/rune && helm lint ./charts/rune-operator
-
-  package-charts:
-    name: RuneGate/Regression/Chart-Package
-    needs: [changes, feature-charts]
-    if: needs.changes.outputs.charts == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - run: |
-          mkdir -p dist
-          helm package ./charts/rune --destination dist/
-          helm package ./charts/rune-operator --destination dist/
-
-  # ─── Security gates ──────────────────────────────────────────────────────────
-
+  # ─── Repo-specific: SBOM + CVE policy (dir scanning, not image) ────────────
   security-sbom:
     name: RuneGate/Security/SBOM-and-CVE-Policy
     needs: [changes]
@@ -113,26 +89,18 @@ jobs:
       - name: Scan SBOM — Grype + Trivy (IEC 62443 4-1 ML4 SVV-3 / DM-4)
         run: |
           set -euo pipefail
-          # Grype scans the chart directory directly (avoids CycloneDX root-component
-          # type compatibility issues between Syft and Grype parsers).
           docker run --rm -v "${PWD}:/work" anchore/grype:v0.88.0 -c /work/.grype.yaml dir:/work/charts/rune -o json > sbom/rune-chart-grype.json
-          # Trivy scans chart dir directly — avoids CycloneDX root-component type
-          # parse error (Syft SBOM is retained for SLSA attestation only)
           docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 fs /work/charts/rune --format json --output /work/sbom/rune-chart-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
       - name: Enforce CVE policy — IEC 62443 4-1 ML4 DM-4
         env:
           BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
         run: |
           python3 - <<'PY'
-          import os
           import json
           from pathlib import Path
 
-          # IEC 62443 4-1 ML4 DM-4 blocking policy:
-          #   Block only when remediation exists (fixable vulnerabilities over threshold).
-          #   Unfixable vulnerabilities are logged and require VEX/risk acceptance tracking.
-          BLOCK_THRESHOLD = 7.0   # fixable HIGH+CRITICAL → hard block (IEC 62443 4-1 ML4 DM-4)
-          WARN_THRESHOLD  = 7.0   # unfixable HIGH+CRITICAL → VEX register required
+          BLOCK_THRESHOLD = 7.0
+          WARN_THRESHOLD  = 7.0
 
           def safe_float(v):
               try: return float(v or 0)
@@ -186,45 +154,15 @@ jobs:
           path: sbom/
           retention-days: 14
 
-  security-secrets:
-    name: RuneGate/Security/SecretScanning
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  security-sast:
-    name: RuneGate/Security/SAST
-    needs: [changes]
-    if: needs.changes.outputs.charts == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy config scan
-        run: |
-          docker run --rm \
-            -v "${PWD}:/work" \
-            -w /work \
-            aquasec/trivy:0.65.0 \
-            config --severity HIGH,CRITICAL --exit-code 1 .
-
+  # ─── Repo-specific: license file check ──────────────────────────────────────
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          test -f LICENSE
+      - run: test -f LICENSE
 
-  # ─── Deployment tests ────────────────────────────────────────────────────────
-  # Skipped entirely when charts haven't changed, avoiding the kind cluster
-  # spin-up and the Kubernetes/Docker Hub API calls for version discovery.
-
+  # ─── Deployment tests (kind cluster matrix) ────────────────────────────────
   fetch-k8s-versions:
     name: Discover Supported Kubernetes Versions
     needs: [changes]
@@ -246,8 +184,6 @@ jobs:
             AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
           fi
 
-          # Fetch stable Kubernetes releases from GitHub API (authenticated + retries).
-          # Fallback to git tags if API is unavailable/rate-limited.
           API_JSON=$(curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
             -H "Accept: application/vnd.github+json" \
             "${AUTH_HEADER[@]}" \
@@ -259,9 +195,7 @@ jobs:
               sed 's/^v//' | \
               grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
               sort -V)
-            echo "Using Kubernetes versions from GitHub Releases API."
           else
-            echo "GitHub Releases API unavailable. Falling back to git tags."
             RELEASES=$(git ls-remote --tags --refs https://github.com/kubernetes/kubernetes.git 'v1.*' | \
               awk -F/ '{print $3}' | sed 's/^v//' | \
               grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
@@ -269,34 +203,24 @@ jobs:
           fi
 
           if [ -z "${RELEASES}" ]; then
-            echo "Unable to determine Kubernetes releases from API and fallback."
+            echo "Unable to determine Kubernetes releases."
             exit 1
           fi
 
-          # Kubernetes supports latest 3 minor releases (N, N-1, N-2)
           SUPPORTED_MINORS=$(printf '%s\n' "$RELEASES" | awk -F. '{print $1"."$2}' | sort -V | uniq | tail -3)
 
-          # Fetch kind image tags from Docker Hub with resilient pagination.
           fetch_kind_tags() {
             local base_url="$1"
             local url="${base_url}?page_size=100"
             local all_tags=""
-
             while [ -n "$url" ] && [ "$url" != "null" ]; do
               local resp
               resp=$(curl -sSL --retry 5 --retry-delay 2 --retry-all-errors "$url" || true)
-              if [ -z "$resp" ]; then
-                break
-              fi
-
-              if ! printf '%s' "$resp" | jq -e '.results' >/dev/null 2>&1; then
-                break
-              fi
-
+              if [ -z "$resp" ]; then break; fi
+              if ! printf '%s' "$resp" | jq -e '.results' >/dev/null 2>&1; then break; fi
               all_tags+=$(printf '%s' "$resp" | jq -r '.results[].name')$'\n'
               url=$(printf '%s' "$resp" | jq -r '.next // empty')
             done
-
             printf '%s' "$all_tags" | sed '/^$/d' | sort -u
           }
 
@@ -304,60 +228,40 @@ jobs:
           if [ -z "${KIND_TAGS}" ]; then
             KIND_TAGS=$(fetch_kind_tags "https://hub.docker.com/v2/namespaces/kindest/repositories/node/tags")
           fi
-
           if [ -z "${KIND_TAGS}" ]; then
-            echo "Unable to fetch kind image tags from Docker Hub."
+            echo "Unable to fetch kind image tags."
             exit 1
           fi
 
-          echo "Supported Kubernetes minors (N, N-1, N-2):"
-          printf '  - %s\n' $SUPPORTED_MINORS
-
           SELECTED=""
           for minor in $SUPPORTED_MINORS; do
-            echo "Resolving last two patch releases for minor ${minor}..."
-
             CANDIDATES=$(printf '%s\n' "$RELEASES" | awk -F. -v m="$minor" '$1"."$2==m {print}' | sort -V | tail -20)
-
             AVAILABLE_FOR_MINOR=""
             while IFS= read -r version; do
               if [ -n "$version" ] && printf '%s\n' "$KIND_TAGS" | grep -qx "v${version}"; then
                 AVAILABLE_FOR_MINOR="${AVAILABLE_FOR_MINOR}${version}"$'\n'
               fi
             done <<< "$CANDIDATES"
-
             PICKED=$(printf '%s' "$AVAILABLE_FOR_MINOR" | sed '/^$/d' | sort -V | tail -2)
-            if [ -z "$PICKED" ]; then
-              echo "  ✗ No kind images found for supported minor ${minor}"
-              continue
+            if [ -n "$PICKED" ]; then
+              SELECTED="${SELECTED}${PICKED}"$'\n'
             fi
-
-            echo "  ✓ Selected for ${minor}:"
-            printf '    - v%s\n' $PICKED
-            SELECTED="${SELECTED}${PICKED}"$'\n'
           done
 
           FINAL=$(printf '%s' "$SELECTED" | sed '/^$/d' | sort -V | uniq)
           if [ -z "$FINAL" ]; then
-            echo "No Kubernetes versions matched supported minors with available kind images."
+            echo "No Kubernetes versions matched."
             exit 1
           fi
 
           REQUIRED_VERSION=$(printf '%s\n' "$FINAL" | sort -V | tail -1)
-          if [ -z "$REQUIRED_VERSION" ]; then
-            echo "Unable to determine required Kubernetes version."
-            exit 1
-          fi
-
           MATRIX=$(printf '%s\n' "$FINAL" | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "required_version=$REQUIRED_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Selected Kubernetes patch versions for testing: $MATRIX"
-          echo "Blocking gate version (must pass): $REQUIRED_VERSION"
 
   deployment-test:
     name: RuneGate/Functional/Deployment-Test (K8s ${{ matrix.k8s-version }})
-    needs: [changes, feature-charts, linting-charts, fetch-k8s-versions, security-sast, security-sbom, security-secrets]
+    needs: [changes, helm-quality, security-scan, fetch-k8s-versions, security-sbom]
     if: needs.changes.outputs.charts == 'true'
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.k8s-version != needs.fetch-k8s-versions.outputs.required_version }}
@@ -381,7 +285,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
             . .ci/upstream-images.env
             if [ -n "${RUNE_IMAGE:-}" ]; then
               echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -396,7 +299,6 @@ jobs:
           kubectl create namespace rune-test
           HELM_ARGS=(--namespace rune-test --wait --timeout=2m --debug)
           if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
             . .ci/upstream-images.env
             if [ -n "${RUNE_IMAGE:-}" ]; then
               RUNE_REPO="${RUNE_IMAGE%:*}"
@@ -410,7 +312,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
             . .ci/upstream-images.env
             if [ -n "${RUNE_OPERATOR_IMAGE:-}" ]; then
               echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -423,7 +324,6 @@ jobs:
       - name: Deploy rune-operator chart to kind cluster
         run: |
           if [ -f .ci/upstream-images.env ]; then
-            # shellcheck disable=SC1091
             . .ci/upstream-images.env
           fi
           if [ -z "${RUNE_OPERATOR_IMAGE:-}" ]; then
@@ -440,55 +340,34 @@ jobs:
             --wait --timeout=2m --debug
       - name: Verify deployment and pod readiness
         run: |
-          echo "=== Kubernetes Version ==="
           kubectl version
-
-          echo "=== Deployment Status ==="
           kubectl get deployment -n rune-test rune
-
-          echo "=== Pod Status ==="
           kubectl get pods -n rune-test -o wide
-
-          echo "=== Waiting for pod readiness ==="
           kubectl wait --for=condition=ready pod \
             -l app.kubernetes.io/instance=rune \
             -n rune-test \
             --timeout=2m || \
-            (echo "Pod not ready within timeout, fetching logs:" && \
-             kubectl logs -n rune-test deployment/rune --all-containers=true && \
+            (kubectl logs -n rune-test deployment/rune --all-containers=true && \
              kubectl describe pods -n rune-test && \
              exit 1)
       - name: Validate resources
         run: |
-          echo "=== Services ==="
           kubectl get service -n rune-test rune
-
-          echo "=== ConfigMaps ==="
           kubectl get configmap -n rune-test rune
-
-          echo "=== ClusterRole ==="
           kubectl get clusterrole rune
-
-          echo "=== ClusterRoleBinding ==="
           kubectl get clusterrolebinding rune
-
-          echo "=== rune-operator Deployment ==="
-          kubectl get deployment -n rune-test -l app.kubernetes.io/name=rune-operator 2>/dev/null || echo "rune-operator not deployed (RUNE_OPERATOR_IMAGE not set)"
-
-          echo "=== All resources in rune-test namespace ==="
+          kubectl get deployment -n rune-test -l app.kubernetes.io/name=rune-operator 2>/dev/null || echo "rune-operator not deployed"
           kubectl get all -n rune-test
       - name: Run basic connectivity test
         run: |
           kubectl port-forward -n rune-test svc/rune 8080:8080 &
           PF_PID=$!
           sleep 2
-
           if curl -sf http://localhost:8080/health >/dev/null 2>&1 || curl -sf http://localhost:8080 >/dev/null 2>&1; then
-            echo "✓ Service is responding"
+            echo "Service is responding"
           else
-            echo "⚠ Service endpoint not responding (may be expected if not listening yet)"
+            echo "Service endpoint not responding (may be expected if not listening yet)"
           fi
-
           kill $PF_PID 2>/dev/null || true
       - name: Cleanup
         if: always()
@@ -497,8 +376,7 @@ jobs:
           kubectl logs -n rune-test deployment/rune --all-containers=true 2>/dev/null || true
           kubectl delete namespace rune-test --ignore-not-found
 
-  # ─── Process: PR body compliance ─────────────────────────────────────────────
-
+  # ─── Process: PR body compliance ────────────────────────────────────────────
   pr-body-check:
     name: RuneGate/Process/PR-Body-Compliance
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
@@ -538,27 +416,22 @@ jobs:
             }
             if (errors.length > 0) {
               const msg = '**PR Body Compliance Check Failed**\n\n' +
-                errors.map(e => `- ❌ ${e}`).join('\n') +
+                errors.map(e => `- ${e}`).join('\n') +
                 '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
               core.setFailed(msg);
-              console.log(msg);
             } else {
               console.log('PR body compliance check passed.');
             }
 
-  # ─── Merge gate ──────────────────────────────────────────────────────────────
-
+  # ─── Merge gate ─────────────────────────────────────────────────────────────
   merge-gate:
     name: Merge Gate
     if: always()
     needs:
       - changes
-      - feature-charts
-      - linting-charts
-      - package-charts
+      - security-scan
+      - helm-quality
       - security-sbom
-      - security-sast
-      - security-secrets
       - security-licenses
       - fetch-k8s-versions
       - deployment-test
@@ -569,16 +442,13 @@ jobs:
         run: |
           rc=0
           if [ "${{ needs.changes.result }}" != "success" ]; then
-            echo "changes job did not succeed (result: ${{ needs.changes.result }}); failing merge gate."
+            echo "changes job did not succeed (result: ${{ needs.changes.result }})"
             rc=1
           fi
           for result in \
-            "${{ needs.feature-charts.result }}" \
-            "${{ needs.linting-charts.result }}" \
-            "${{ needs.package-charts.result }}" \
+            "${{ needs.security-scan.result }}" \
+            "${{ needs.helm-quality.result }}" \
             "${{ needs.security-sbom.result }}" \
-            "${{ needs.security-sast.result }}" \
-            "${{ needs.security-secrets.result }}" \
             "${{ needs.security-licenses.result }}" \
             "${{ needs.fetch-k8s-versions.result }}" \
             "${{ needs.deployment-test.result }}" \
@@ -602,12 +472,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // IEC 62443-4-1 ML4 Compensating Control: The automated pipeline acts as the objective peer reviewer.
-            // If this job executes, it guarantees all immutable security, coverage, and SAST checks have passed.
             await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
               event: 'APPROVE',
-              body: '✅ **RuneGate Automated Approval**\n\nUnder IEC 62443-4-1 ML4 guidelines, this PR has been automatically approved because it deterministically passed all strict Quality Gates (Coverage > 97%, SAST, SCA, SBOM, and SLSA L3 provenance). This satisfies the objective two-person peer-review requirement.'
+              body: 'RuneGate Automated Approval\n\nUnder IEC 62443-4-1 ML4 guidelines, this PR has been automatically approved because it deterministically passed all strict Quality Gates (SAST, SCA, SBOM, and SLSA L3 provenance). This satisfies the objective two-person peer-review requirement.'
             });
