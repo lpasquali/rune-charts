@@ -3,13 +3,12 @@ name: Project Board Sync
 
 on:
   issues:
-    types: [opened, closed, reopened, labeled, unlabeled]
+    types: [opened, closed, reopened, labeled, unlabeled, assigned, unassigned]
   pull_request:
     types: [opened, closed, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
 
 jobs:
   sync:
-    uses: lpasquali/rune-ci/.github/workflows/project-sync.yml@ac0bd4bc0253ee0261c2e2e63034aa2d7d903e5e # v0.1.0
+    uses: lpasquali/rune-ci/.github/workflows/project-sync-logic.yml@063ed73b40bf986310a32ee32dc8e21e0a39aa55 # main
     secrets:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-
