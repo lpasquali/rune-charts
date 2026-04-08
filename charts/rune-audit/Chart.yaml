@@ -8,3 +8,19 @@ license: Apache-2.0
 maintainers:
   - name: lpasquali
     email: lpasquali@users.noreply.github.com
+description: RUNE audit service - IEC 62443 compliance evidence collection
+type: application
+version: 0.1.0
+appVersion: "0.0.0a0"
+license: Apache-2.0
+keywords:
+  - audit
+  - compliance
+  - iec-62443
+  - slsa
+home: https://github.com/lpasquali/rune-charts
+sources:
+  - https://github.com/lpasquali/rune-charts
+  - https://github.com/lpasquali/rune-audit
+maintainers:
+  - name: luca

@@ -55,6 +55,21 @@ resources:
   limits:
     cpu: 200m
     memory: 256Mi
+  tag: latest
+  pullPolicy: IfNotPresent
+
+schedule: "0 6 * * 1"  # Weekly Monday 6am UTC
+
+config:
+  owner: lpasquali
+  repos: "rune,rune-operator,rune-ui,rune-charts,rune-docs,rune-audit,rune-airgapped"
+
+env: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
   requests:
     cpu: 100m
     memory: 128Mi
@@ -62,3 +77,30 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+nameOverride: ""
+fullnameOverride: ""
+
+githubToken:
+  # If true, creates a Secret from the value below.
+  # If false, you must create the Secret yourself or use an ExternalSecret.
+  create: false
+  secretName: ""
+  token: ""

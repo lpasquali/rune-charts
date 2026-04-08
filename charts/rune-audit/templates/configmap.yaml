@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rune-audit.fullname" . }}
+  labels:
+    {{- include "rune-audit.labels" . | nindent 4 }}
+data:
+  RUNE_AUDIT_OWNER: {{ .Values.config.owner | quote }}
+  RUNE_AUDIT_REPOS: {{ .Values.config.repos | quote }}

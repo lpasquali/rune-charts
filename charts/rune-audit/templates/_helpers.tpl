@@ -9,6 +9,7 @@ Expand the name of the chart.
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
+>>>>>>> 9948934 (feat: add Helm chart for rune-audit CronJob deployment)
 */}}
 {{- define "rune-audit.fullname" -}}
 {{- if .Values.fullnameOverride }}
@@ -24,7 +25,10 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/*
+<<<<<<< HEAD
 Create chart name and version as used by the chart label.
+=======
+Create chart label.
 */}}
 {{- define "rune-audit.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
@@ -32,6 +36,7 @@ Create chart name and version as used by the chart label.
 
 {{/*
 Common labels
+Common labels applied to every resource.
 */}}
 {{- define "rune-audit.labels" -}}
 helm.sh/chart: {{ include "rune-audit.chart" . }}
@@ -44,6 +49,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 Selector labels
+Selector labels.
 */}}
 {{- define "rune-audit.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "rune-audit.name" . }}
@@ -52,6 +58,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/*
 Create the name of the service account to use
+Create the name of the service account to use.
 */}}
 {{- define "rune-audit.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
@@ -60,3 +67,14 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+<<<<<<< HEAD
+=======
+
+{{/*
+Render the full image reference (repository:tag).
+*/}}
+{{- define "rune-audit.image" -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion }}
+{{- printf "%s:%s" .Values.image.repository $tag }}
+{{- end }}
+>>>>>>> 9948934 (feat: add Helm chart for rune-audit CronJob deployment)

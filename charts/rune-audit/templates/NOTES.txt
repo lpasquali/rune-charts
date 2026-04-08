@@ -1,0 +1,19 @@
+CHART NAME: {{ .Chart.Name }}
+CHART VERSION: {{ .Chart.Version }}
+APP VERSION: {{ .Chart.AppVersion }}
+
+RUNE Audit has been deployed as a CronJob.
+
+Schedule: {{ .Values.schedule }}
+
+The audit job will collect compliance evidence from these repos:
+  {{ .Values.config.repos }}
+
+To trigger a manual run:
+  kubectl create job --from=cronjob/{{ include "rune-audit.fullname" . }} \
+    {{ include "rune-audit.fullname" . }}-manual -n {{ .Release.Namespace }}
+
+To check job history:
+  kubectl get jobs -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+DOCS: https://lpasquali.github.io/rune-docs/

@@ -51,3 +51,60 @@ spec:
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "rune-audit.selectorLabels" . | nindent 8 }}
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "rune-audit.selectorLabels" . | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "rune-audit.serviceAccountName" . }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          restartPolicy: OnFailure
+          containers:
+            - name: audit
+              image: {{ include "rune-audit.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              {{- with .Values.containerSecurityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              command:
+                - rune-audit
+                - collect
+                - all
+              envFrom:
+                - configMapRef:
+                    name: {{ include "rune-audit.fullname" . }}
+              {{- if or .Values.githubToken.create .Values.githubToken.secretName }}
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.githubToken.secretName | default (printf "%s-token" (include "rune-audit.fullname" .)) }}
+                      key: github-token
+              {{- end }}
+              {{- with .Values.env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
