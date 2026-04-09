@@ -16,22 +16,22 @@ permissions:
 
 jobs:
   security:
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
 
   helm:
-    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
     with:
       chart-dirs: "charts/rune charts/rune-operator"
 
   integration:
-    uses: lpasquali/rune-ci/.github/workflows/helm-integration.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/helm-integration.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
     with:
       charts: '["rune", "rune-operator"]'
 
   compliance:
     needs: [security, helm, integration]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
     with:
       needs-json: ${{ toJson(needs) }}
       merge-gate-excludes: "helm,integration,security" # Force pass
