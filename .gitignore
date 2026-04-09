@@ -21,3 +21,5 @@ htmlcov/
 # IDE
 *.swp
 *.swo
+# Claude Code per-project agent state
+.claude/
