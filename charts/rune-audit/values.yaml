@@ -1,70 +1,54 @@
+# Clean values.yaml for rune-audit
 image:
   repository: ghcr.io/lpasquali/rune-audit
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-schedule: "0 0 * * *" # Daily at midnight
+schedule: "0 6 * * 1" # Weekly Monday 6am UTC
 failedJobsHistoryLimit: 1
 successfulJobsHistoryLimit: 3
 concurrencyPolicy: Forbid
-
-# Command arguments for the audit (e.g. collect github-artifacts)
-args: ["collect", "github-artifacts"]
-
-env:
-  # GITHUB_TOKEN should be provided via a secret
-  - name: GITHUB_TOKEN
-    valueFrom:
-      secretKeyRef:
-        name: rune-audit-secrets
-        key: GITHUB_TOKEN
-
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
-
-podAnnotations: {}
-
-podSecurityContext:
-  runAsUser: 999
-  runAsGroup: 999
-  fsGroup: 999
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  privileged: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 999
-  runAsGroup: 999
-
-resources:
-  limits:
-    cpu: 200m
-    memory: 256Mi
-  tag: latest
-  pullPolicy: IfNotPresent
-
-schedule: "0 6 * * 1"  # Weekly Monday 6am UTC
 
 config:
   owner: lpasquali
   repos: "rune,rune-operator,rune-ui,rune-charts,rune-docs,rune-audit,rune-airgapped"
 
+args: ["collect", "all"]
+
+githubToken:
+  create: false
+  secretName: ""
+  token: ""
+
 env: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automount: false
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  privileged: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
 
 resources:
   limits:
@@ -77,30 +61,3 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
-serviceAccount:
-  create: true
-  name: ""
-  annotations: {}
-
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
-
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop: [ALL]
-
-nameOverride: ""
-fullnameOverride: ""
-
-githubToken:
-  # If true, creates a Secret from the value below.
-  # If false, you must create the Secret yourself or use an ExternalSecret.
-  create: false
-  secretName: ""
-  token: ""
