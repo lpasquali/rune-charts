@@ -45,7 +45,16 @@ jobs:
         run: |
           for chart in postgres rune rune-operator; do
             echo "Testing chart: ${chart}"
-            helm install "${chart}" "./charts/${chart}" --namespace rune-test --create-namespace --wait --timeout=2m
+            install_args=(--namespace rune-test --create-namespace --wait --timeout=2m)
+            if [ "${chart}" = "postgres" ]; then
+              install_args+=(--set auth.password=test-password --set persistence.enabled=false)
+            fi
+            if ! helm install "${chart}" "./charts/${chart}" "${install_args[@]}"; then
+              kubectl get pods -n rune-test -o wide || true
+              kubectl describe pods -n rune-test || true
+              kubectl logs -n rune-test -l app.kubernetes.io/instance="${chart}" --all-containers=true --tail=-1 || true
+              exit 1
+            fi
             kubectl get all -n rune-test
             helm uninstall "${chart}" --namespace rune-test
           done
