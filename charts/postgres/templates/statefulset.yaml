@@ -17,6 +17,29 @@ spec:
     spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: prepare-data-dirs
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /var/lib/postgresql/data /var/run/postgresql /tmp
+              chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /var/lib/postgresql/data /var/run/postgresql /tmp
+              chmod 0700 /var/lib/postgresql/data
+              chmod 0775 /var/run/postgresql /tmp
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: tmp
+              mountPath: /tmp
+            - name: pg-run
+              mountPath: /var/run/postgresql
       containers:
         - name: postgres
           securityContext:
