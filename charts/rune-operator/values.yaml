@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/lpasquali/rune-operator
-  tag: "main"
+  tag: "v0.0.0a0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

@@ -33,6 +33,7 @@ spec:
             runAsNonRoot: false
             runAsUser: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
