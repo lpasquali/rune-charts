@@ -397,3 +397,13 @@ telemetry:
   pduEndpoint: ""
   # How often (seconds) the sidecar polls both endpoints.
   pollIntervalSeconds: 30
+
+# ---------------------------------------------------------------------------
+# SR-Q-023 — API audit log retention (operator / platform responsibility)
+# ---------------------------------------------------------------------------
+# RUNE emits structured JSON audit events on stderr. In Kubernetes, retention
+# is enforced by your log pipeline (Loki, ELK, cloud logging). Target >= 90 days.
+auditLogs:
+  retentionDays: 90
+  # Document for assessors: ship container logs to a sink whose retention policy
+  # meets or exceeds retentionDays (daily rotation / max chunk size in the SIEM).
