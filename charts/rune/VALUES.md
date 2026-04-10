@@ -256,3 +256,30 @@ Requires [External Secrets Operator](https://external-secrets.io) installed.
 | `cloud.externalSecrets.aws.secretPath` | `"rune/aws-credentials"` | Remote key path for AWS credentials |
 | `cloud.externalSecrets.azure.secretPath` | `"rune/azure-credentials"` | Remote key path for Azure credentials |
 | `cloud.externalSecrets.gcp.secretPath` | `"rune/gcp-credentials"` | Remote key path for GCP credentials |
+
+---
+
+## Database (`rune.database.*` / `postgres.*`)
+
+`RUNE_DB_URL` is always injected from a Kubernetes `Secret` (`secretKeyRef`), never from the ConfigMap.
+
+| Key | Default | Description |
+|---|---|---|
+| `postgres.enabled` | `false` | Deploy the bundled `charts/postgres` subchart |
+| `postgres.image.repository` | `docker.io/library/postgres` | Postgres image repository |
+| `postgres.image.tag` | `"17-alpine"` | Postgres image tag |
+| `postgres.image.pullPolicy` | `IfNotPresent` | Image pull policy |
+| `postgres.service.port` | `5432` | Service port (used in `RUNE_DB_URL`) |
+| `postgres.auth.username` | `rune` | Database user (`POSTGRES_USER`) |
+| `postgres.auth.password` | `""` | Database password when the chart creates the credentials Secret |
+| `postgres.auth.database` | `rune` | Database name (`POSTGRES_DB`) |
+| `postgres.auth.existingSecret` | `""` | Pre-created Secret with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. If set, **must** set `rune.database.existingSecret` with `RUNE_DB_URL`. |
+| `postgres.initdbArgs` | UTF-8 `lc-*` | Passed as `POSTGRES_INITDB_ARGS` |
+| `postgres.persistence.*` | see `values.yaml` | PVC / `emptyDir` when disabled |
+| `postgres.resources` | `{}` | Postgres container resources |
+| `rune.database.existingSecret` | `""` | Secret containing `RUNE_DB_URL` (external DB, or required when `postgres.auth.existingSecret` is set) |
+| `rune.database.existingSecretKey` | `RUNE_DB_URL` | Key name inside that Secret |
+
+Subchart-only options (`nameOverride`, `fullnameOverride`, security contexts, etc.) match `charts/postgres/values.yaml`.
+
+See also: `charts/postgres/VALUES.md`.

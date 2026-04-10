@@ -21,12 +21,12 @@ jobs:
   helm:
     uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
     with:
-      chart-dirs: "charts/rune charts/rune-operator"
+      chart-dirs: "charts/postgres charts/rune charts/rune-operator"
 
   integration:
     uses: lpasquali/rune-ci/.github/workflows/helm-integration.yml@95f0b3fd7c0cdbab72a42e71343c27125997bca5 # main
     with:
-      charts: '["rune", "rune-operator"]'
+      charts: '["postgres", "rune", "rune-operator"]'
 
   compliance:
     needs: [security, helm, integration]

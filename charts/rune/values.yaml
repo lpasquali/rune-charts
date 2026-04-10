@@ -185,6 +185,13 @@ rune:
   # Leave empty to use inline values above.
   existingSecret: ""
 
+  # --- Database (RUNE_DB_URL) ---
+  # When postgres.enabled=true, a chart Secret is created with RUNE_DB_URL unless
+  # you set existingSecret to use your own Secret (required if postgres.auth.existingSecret is set).
+  database:
+    existingSecret: ""
+    existingSecretKey: RUNE_DB_URL
+
   # --- Extra arbitrary environment variables ---
   extraEnv: []
   # - name: CUSTOM_VAR
@@ -305,6 +312,50 @@ cloud:
       secretPath: "rune/azure-credentials"    # keys: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
     gcp:
       secretPath: "rune/gcp-credentials"      # key: credentials.json (raw JSON content)
+
+# ---------------------------------------------------------------------------
+# PostgreSQL subchart (optional first-party database for RUNE_DB_URL)
+# ---------------------------------------------------------------------------
+# When enabled, deploys charts/postgres and injects RUNE_DB_URL from a Secret
+# (never from the ConfigMap). For an external database without the subchart,
+# set rune.database.existingSecret to a Secret that contains RUNE_DB_URL.
+postgres:
+  enabled: false
+  nameOverride: ""
+  fullnameOverride: ""
+  image:
+    repository: docker.io/library/postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+  auth:
+    username: rune
+    password: ""
+    database: rune
+    # Pre-created Secret with POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB.
+    # If set, you must also set rune.database.existingSecret with RUNE_DB_URL.
+    existingSecret: ""
+  initdbArgs: '--encoding=UTF-8 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8'
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 8Gi
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+  resources: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ---------------------------------------------------------------------------
 # Issue #18 — S3 / PVC storage persistence

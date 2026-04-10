@@ -1,0 +1,49 @@
+# Default values for the postgres subchart (PostgreSQL 17, official image).
+
+image:
+  repository: docker.io/library/postgres
+  tag: "17-alpine"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  port: 5432
+
+auth:
+  username: rune
+  # Required for a working install when existingSecret is not set (helm lint allows empty).
+  password: ""
+  database: rune
+  # When set, the chart does not create a credentials Secret; the StatefulSet
+  # loads POSTGRES_* from this Secret. Keys must be POSTGRES_USER,
+  # POSTGRES_PASSWORD, and POSTGRES_DB.
+  existingSecret: ""
+
+# Passed to the container as POSTGRES_INITDB_ARGS (UTF-8 database).
+initdbArgs: '--encoding=UTF-8 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8'
+
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 8Gi
+  accessMode: ReadWriteOnce
+  # Use an existing PVC name instead of creating {{ fullname }}-data.
+  existingClaim: ""
+
+resources: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  fsGroup: 999
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
