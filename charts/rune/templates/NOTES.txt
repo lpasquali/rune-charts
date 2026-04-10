@@ -45,6 +45,26 @@ RUNNING RUNE AS A CLIENT
        --insecure run-benchmark
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATABASE (RUNE_DB_URL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.postgres.enabled }}
+  Bundled PostgreSQL is enabled. RUNE_DB_URL is injected from a Secret (not the ConfigMap).
+
+  {{- if .Values.rune.database.existingSecret }}
+  Using your Secret for RUNE_DB_URL: {{ .Values.rune.database.existingSecret }}
+  {{- else }}
+  Connection string is in Secret {{ include "rune.fullname" . }}-db-url (key RUNE_DB_URL).
+  {{- end }}
+
+  Postgres listens inside the cluster on headless service {{ include "rune.postgres.fullname" . }} (port {{ .Values.postgres.service.port | default 5432 }}).
+{{- else if .Values.rune.database.existingSecret }}
+  External database: RUNE_DB_URL comes from Secret {{ .Values.rune.database.existingSecret }}.
+{{- else }}
+  No chart-managed database. To use PostgreSQL, set postgres.enabled=true (and postgres.auth.password),
+  or create a Secret with RUNE_DB_URL and set rune.database.existingSecret.
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CLOUD CREDENTIAL SETUP (choose the most secure method available)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

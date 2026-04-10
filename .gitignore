@@ -4,6 +4,7 @@ dist/
 *.tgz
 *.prov
 sbom/
+!charts/rune/charts/postgres-0.1.0.tgz
 
 # OS
 .DS_Store

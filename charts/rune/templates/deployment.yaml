@@ -152,6 +152,15 @@ spec:
             - name: RUNE_OLLAMA_WARMUP_TIMEOUT
               value: {{ .Values.rune.ollama.warmupTimeout | quote }}
 
+            {{- if or .Values.postgres.enabled .Values.rune.database.existingSecret }}
+            # --- Database (RUNE_DB_URL from Secret; never from ConfigMap) ---
+            - name: RUNE_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.rune.database.existingSecret }}{{ .Values.rune.database.existingSecret }}{{ else }}{{ printf "%s-db-url" (include "rune.fullname" .) }}{{ end }}
+                  key: {{ .Values.rune.database.existingSecretKey | default "RUNE_DB_URL" }}
+            {{- end }}
+
             # --- Agent / Benchmark ---
             - name: RUNE_QUESTION
               value: {{ .Values.rune.question | quote }}

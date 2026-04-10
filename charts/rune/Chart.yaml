@@ -17,3 +17,9 @@ sources:
 license: Apache-2.0
 maintainers:
   - name: luca
+
+dependencies:
+  - name: postgres
+    version: 0.1.0
+    repository: file://../postgres
+    condition: postgres.enabled

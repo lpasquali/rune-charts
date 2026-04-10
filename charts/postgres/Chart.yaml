@@ -1,0 +1,15 @@
+apiVersion: v2
+name: postgres
+description: Minimal first-party PostgreSQL StatefulSet for RUNE and related charts.
+type: application
+version: 0.1.0
+appVersion: "17"
+keywords:
+  - postgresql
+  - database
+home: https://github.com/lpasquali/rune-charts
+sources:
+  - https://github.com/lpasquali/rune-charts
+license: Apache-2.0
+maintainers:
+  - name: luca
