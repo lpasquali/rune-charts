@@ -1,0 +1,200 @@
+---
+# GCP Cloud SQL PostgreSQL Composition
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runedatabase-gcp
+  labels:
+    provider: gcp
+spec:
+  compositeTypeRef:
+    apiVersion: database.infra.rune.ai/v1alpha1
+    kind: XRuneDatabase
+  mode: Pipeline
+  pipeline:
+    - step: provision-cloudsql
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-cloudsql
+        spec:
+          resources:
+            - name: cloudsql-instance
+              base:
+                apiVersion: >-
+                  sql.gcp.upbound.io/v1beta1
+                kind: DatabaseInstance
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      cloudsql-instance
+                spec:
+                  forProvider:
+                    databaseVersion: POSTGRES_16
+                    region: us-central1
+                    settings:
+                      - tier: db-f1-micro
+                        availabilityType: ZONAL
+                        backupConfiguration:
+                          - enabled: true
+                        ipConfiguration:
+                          - requireSsl: false
+                  managementPolicies:
+                    - "Observe"
+                    - "Create"
+                    - "Update"
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.region
+                  toFieldPath: spec.forProvider.region
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.version
+                  toFieldPath: >-
+                    spec.forProvider.databaseVersion
+                  transforms:
+                    - type: string
+                      string:
+                        fmt: "POSTGRES_%s"
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.gcp.tier
+                  toFieldPath: >-
+                    spec.forProvider.settings[0].tier
+    - step: write-connection-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: create-cloudsql-secret
+        spec:
+          delimiters:
+            left: "[["
+            right: "]]"
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: >-
+                    cloudsql-secret-object
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-db-secret
+                      namespace: rune
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                    type: Opaque
+                    stringData:
+                      RUNE_DB_URL: >-
+                        postgresql://postgres:postgres@[[
+                        .observed.resources.cloudsqlInstance.
+                        status.atProvider.publicIpAddress ]]:5432/rune
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready
+
+---
+# GCP GCS Bucket Composition
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runeobjectstore-gcp
+  labels:
+    provider: gcp
+spec:
+  compositeTypeRef:
+    apiVersion: storage.infra.rune.ai/v1alpha1
+    kind: XRuneObjectStore
+  mode: Pipeline
+  pipeline:
+    - step: create-gcs-bucket
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-gcs
+        spec:
+          resources:
+            - name: gcs-bucket
+              base:
+                apiVersion: storage.gcp.upbound.io/v1beta1
+                kind: Bucket
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      gcs-bucket
+                spec:
+                  forProvider:
+                    location: US
+                    uniformBucketLevelAccess:
+                      - enabled: true
+                  managementPolicies:
+                    - "Observe"
+                    - "Create"
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.bucketName
+                  toFieldPath: metadata.name
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.region
+                  toFieldPath: spec.forProvider.location
+    - step: write-gcs-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: create-gcs-secret
+        spec:
+          delimiters:
+            left: "[["
+            right: "]]"
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: >-
+                    gcs-secret-object
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-s3-secret
+                      namespace: rune
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                    type: Opaque
+                    stringData:
+                      S3_ACCESS_KEY_ID: placeholder
+                      S3_SECRET_ACCESS_KEY: placeholder
+                      S3_ENDPOINT: https://storage.googleapis.com
+                      S3_BUCKET: >-
+                        [[ .composite.spec.parameters.bucketName ]]
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready

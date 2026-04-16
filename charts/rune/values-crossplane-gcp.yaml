@@ -1,0 +1,27 @@
+---
+# Example values for RUNE on GCP with Crossplane-provisioned Cloud SQL and GCS
+
+rune:
+  database:
+    existingSecret: rune-db-secret
+    existingSecretKey: RUNE_DB_URL
+
+postgres:
+  enabled: false
+
+s3:
+  enabled: true
+  bucket: rune-data-us
+  region: us-central1
+  endpoint: https://storage.googleapis.com
+  existingSecret: rune-s3-secret
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

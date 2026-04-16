@@ -1,0 +1,32 @@
+---
+# Example RuneDatabase Claim for AWS RDS
+apiVersion: database.infra.rune.ai/v1alpha1
+kind: RuneDatabase
+metadata:
+  name: rune-main
+  namespace: rune
+spec:
+  compositionRef:
+    name: runedatabase-aws
+  parameters:
+    provider: aws
+    region: us-east-1
+    version: "16"
+    aws:
+      instanceClass: t3.micro
+      multiAZ: false
+    connectionSecretName: rune-db-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - AWS account with IAM credentials configured in Crossplane ProviderConfig
+# - provider-aws installed and ProviderConfig named "aws-default" set up
+#
+# To apply:
+# kubectl apply -f rune-database-aws.yaml
+#
+# To verify:
+# kubectl get runedatabases -n rune
+# kubectl get secret rune-db-secret -n rune \
+#   -o jsonpath='{.data.RUNE_DB_URL}' | base64 -d
