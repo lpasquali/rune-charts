@@ -1,0 +1,138 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xrunedatabases.database.infra.rune.ai
+spec:
+  group: database.infra.rune.ai
+  names:
+    kind: XRuneDatabase
+    plural: xrunedatabases
+  claimNames:
+    kind: RuneDatabase
+    plural: runedatabases
+  scope: LegacyCluster
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    provider:
+                      description: Cloud provider (aws, gcp, azure, cnpg)
+                      type: string
+                      enum:
+                        - aws
+                        - gcp
+                        - azure
+                        - cnpg
+                    clusterName:
+                      description: >-
+                        Name of CNPG cluster (used when provider=cnpg)
+                      type: string
+                      default: rune-postgres
+                    storageSize:
+                      description: Storage size (e.g., 10Gi, 20Gi)
+                      type: string
+                      default: 10Gi
+                    storageClass:
+                      description: Kubernetes StorageClass for persistence
+                      type: string
+                      default: standard
+                    instances:
+                      description: Number of instances (CNPG replicas)
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    version:
+                      description: PostgreSQL major version
+                      type: string
+                      enum:
+                        - "13"
+                        - "14"
+                        - "15"
+                        - "16"
+                      default: "16"
+                    region:
+                      description: Cloud region (not required for cnpg)
+                      type: string
+                      default: us-east-1
+                    connectionSecretName:
+                      description: Name of Secret to write connection details
+                      type: string
+                      default: rune-db-secret
+                    targetNamespace:
+                      description: Namespace where connection Secret is written
+                      type: string
+                      default: rune
+                    aws:
+                      description: AWS-specific parameters
+                      type: object
+                      properties:
+                        instanceClass:
+                          type: string
+                          default: db.t3.micro
+                        multiAZ:
+                          type: boolean
+                          default: false
+                    gcp:
+                      description: GCP-specific parameters
+                      type: object
+                      properties:
+                        tier:
+                          type: string
+                          default: db-f1-micro
+                        availabilityType:
+                          type: string
+                          enum:
+                            - REGIONAL
+                            - ZONAL
+                          default: ZONAL
+                    azure:
+                      description: Azure-specific parameters
+                      type: object
+                      properties:
+                        skuName:
+                          type: string
+                          default: B_Standard_B1s
+                  required:
+                    - provider
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      additionalPrinterColumns:
+        - name: PROVIDER
+          type: string
+          jsonPath: .spec.parameters.provider
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: SYNCED
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Synced')].status
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp

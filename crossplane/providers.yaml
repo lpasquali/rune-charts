@@ -1,0 +1,37 @@
+---
+# Crossplane Provider packages required by compositions
+# Install these before applying compositions
+
+# provider-kubernetes is required by all compositions for writing Secrets
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Provider
+metadata:
+  name: provider-kubernetes
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v1.2.1
+
+---
+
+# Cloud providers installed in Phase 1b; Phase 0 skeleton does not include them.
+# When Phase 1b lands, add:
+#
+# apiVersion: pkg.crossplane.io/v1beta1
+# kind: Provider
+# metadata:
+#   name: provider-aws
+# spec:
+#   package: xpkg.upbound.io/upbound/provider-family-aws:v1.0.0
+#
+# apiVersion: pkg.crossplane.io/v1beta1
+# kind: Provider
+# metadata:
+#   name: provider-gcp
+# spec:
+#   package: xpkg.upbound.io/upbound/provider-family-gcp:v1.0.0
+#
+# apiVersion: pkg.crossplane.io/v1beta1
+# kind: Provider
+# metadata:
+#   name: provider-azure
+# spec:
+#   package: xpkg.upbound.io/upbound/provider-family-azure:v1.0.0

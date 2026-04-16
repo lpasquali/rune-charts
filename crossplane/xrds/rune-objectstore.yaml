@@ -1,0 +1,135 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xruneobjectstores.storage.infra.rune.ai
+spec:
+  group: storage.infra.rune.ai
+  names:
+    kind: XRuneObjectStore
+    plural: xruneobjectstores
+  claimNames:
+    kind: RuneObjectStore
+    plural: runeobjectstores
+  scope: LegacyCluster
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    provider:
+                      description: Storage provider (aws, gcp, azure, minio)
+                      type: string
+                      enum:
+                        - aws
+                        - gcp
+                        - azure
+                        - minio
+                    bucketName:
+                      description: S3-compatible bucket name
+                      type: string
+                    region:
+                      description: Cloud region (not required for minio)
+                      type: string
+                      default: us-east-1
+                    versioning:
+                      description: Enable object versioning
+                      type: boolean
+                      default: false
+                    connectionSecretName:
+                      description: Name of Secret to write S3 credentials
+                      type: string
+                      default: rune-s3-secret
+                    targetNamespace:
+                      description: Namespace where credential Secret is written
+                      type: string
+                      default: rune
+                    credentialsSecretRef:
+                      description: >-
+                        Reference to existing Secret with credentials
+                        (for minio)
+                      type: object
+                      properties:
+                        namespace:
+                          type: string
+                          default: minio-tenant
+                        name:
+                          type: string
+                          default: minio-root-secret
+                    aws:
+                      description: AWS-specific parameters
+                      type: object
+                      properties:
+                        storageClass:
+                          type: string
+                          default: STANDARD
+                        blockPublicAccess:
+                          type: boolean
+                          default: true
+                    gcp:
+                      description: GCP-specific parameters
+                      type: object
+                      properties:
+                        storageClass:
+                          type: string
+                          default: STANDARD
+                        uniformBucketLevelAccess:
+                          type: boolean
+                          default: true
+                    azure:
+                      description: Azure-specific parameters
+                      type: object
+                      properties:
+                        accessTier:
+                          type: string
+                          enum:
+                            - Hot
+                            - Cool
+                            - Archive
+                          default: Hot
+                  required:
+                    - provider
+                    - bucketName
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      additionalPrinterColumns:
+        - name: PROVIDER
+          type: string
+          jsonPath: .spec.parameters.provider
+        - name: BUCKET
+          type: string
+          jsonPath: .spec.parameters.bucketName
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: SYNCED
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Synced')].status
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
