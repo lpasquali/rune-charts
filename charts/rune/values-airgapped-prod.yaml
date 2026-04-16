@@ -1,0 +1,231 @@
+# Production Airgapped Deployment — External Services
+#
+# This values file is for production air-gapped deployments that use
+# external services (PostgreSQL, S3, inference backend) rather than
+# bundled components.
+#
+# Prerequisites:
+# - PostgreSQL instance provisioned externally (CNPG, managed DB, etc.)
+# - S3-compatible storage configured (Minio, AWS S3, etc.)
+# - Tier-1 inference backend running (Ollama, k8s-inference, etc.)
+# - Kubernetes Secrets created for all external services
+#
+# See rune-airgapped prerequisites.md for detailed setup examples.
+
+# ---------------------------------------------------------------------------
+# RUNE Application Configuration
+# ---------------------------------------------------------------------------
+replicaCount: 2  # Production: at least 2 replicas for HA
+
+image:
+  repository: ghcr.io/lpasquali/rune
+  pullPolicy: IfNotPresent
+  tag: ""  # Use chart appVersion (set via --version during helm pull)
+
+rune:
+  # Backend configuration
+  backend: "local"
+  api:
+    host: "0.0.0.0"
+    port: "8080"
+    baseUrl: ""
+    tenant: "default"
+    # SECURITY: Always disable auth in air-gapped; rely on NetworkPolicy + RBAC
+    authDisabled: "1"
+
+  # Tier-1 Inference Backend (REQUIRED FOR PRODUCTION)
+  # Point to external Ollama or similar service
+  ollama:
+    # EXAMPLE: external Ollama running outside cluster
+    # Update to your actual inference backend URL
+    url: "http://ollama.example.com:11434"
+    warmup: "true"
+    warmupTimeout: "300"
+
+  # Database: External PostgreSQL via Secret
+  database:
+    # SECURITY: Reference an existing Kubernetes Secret with RUNE_DB_URL
+    # Secret must be created out-of-band:
+    #   kubectl create secret generic rune-db-secret \
+    #     -n rune \
+    #     --from-literal=RUNE_DB_URL="postgresql://user:pass@postgres.example.com:5432/rune"
+    existingSecret: "rune-db-secret"
+    existingSecretKey: RUNE_DB_URL
+
+  # Kubeconfig: Leave empty (uses in-cluster ServiceAccount)
+  kubeconfig: ""
+  kubeconfigSecret: ""
+
+  # Debug (disable in production)
+  debug: "false"
+
+# ---------------------------------------------------------------------------
+# PostgreSQL: DO NOT BUNDLE IN-CLUSTER DATABASE
+# ---------------------------------------------------------------------------
+# Production deployments use externally-provisioned PostgreSQL.
+# The in-cluster subchart is DISABLED.
+postgres:
+  enabled: false  # ← CRITICAL: Do NOT enable in production airgap
+
+# ---------------------------------------------------------------------------
+# S3-Compatible Object Storage (REQUIRED FOR PRODUCTION)
+# ---------------------------------------------------------------------------
+# RUNE stores benchmark artifacts and results in S3.
+# Configure external S3 endpoint and credentials.
+s3:
+  enabled: true
+  # Example bucket name (use your bucket)
+  bucket: "rune-data"
+  # Leave region empty for AWS S3; set for MinIO or others
+  region: ""
+  # EXAMPLE: MinIO endpoint
+  # Update to your actual S3 endpoint
+  endpoint: "https://minio.example.com"
+  # SECURITY: Reference an existing Kubernetes Secret with S3 credentials
+  # Secret must be created out-of-band:
+  #   kubectl create secret generic rune-s3-secret \
+  #     -n rune \
+  #     --from-literal=S3_ACCESS_KEY_ID=your-access-key \
+  #     --from-literal=S3_SECRET_ACCESS_KEY=your-secret-key
+  existingSecret: "rune-s3-secret"
+
+# ---------------------------------------------------------------------------
+# Storage: PVC for application data (optional but recommended)
+# ---------------------------------------------------------------------------
+# Use for persistent application state across pod restarts.
+# Requires a StorageClass that supports ReadWriteOnce.
+persistence:
+  enabled: true
+  # Use cluster default StorageClass
+  storageClass: ""
+  size: 20Gi
+  accessMode: ReadWriteOnce
+  existingClaim: ""
+
+# ---------------------------------------------------------------------------
+# Service Account & RBAC
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  automountServiceAccountToken: true
+
+rbac:
+  create: true
+  # Production: read-only cluster access for observability
+  readOnly: true
+  # SECURITY: Do NOT allow cluster-wide secrets access in production
+  allowSecretsAccess: false
+
+# ---------------------------------------------------------------------------
+# Pod Security & Resource Constraints
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: false  # TODO: update image to run non-root
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# ---------------------------------------------------------------------------
+# Health Checks
+# ---------------------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  # Set to true for production access via Ingress; configure carefully
+  # className: "nginx"
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  # hosts:
+  #   - host: rune.example.com
+  #     paths:
+  #       - path: /
+  #         pathType: Prefix
+  # tls:
+  #   - secretName: rune-tls
+  #     hosts:
+  #       - rune.example.com
+
+# ---------------------------------------------------------------------------
+# Autoscaling (optional for production HA)
+# ---------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  # Uncomment to enable HPA in production
+  # minReplicas: 2
+  # maxReplicas: 10
+  # targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 85
+
+# ---------------------------------------------------------------------------
+# Pod Disruption Budget (for HA)
+# ---------------------------------------------------------------------------
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1  # Ensure at least 1 replica stays available
+
+# ---------------------------------------------------------------------------
+# Node Affinity / Topology Spread (optional for multi-node HA)
+# ---------------------------------------------------------------------------
+affinity: {}
+  # Spread replicas across nodes for HA
+  # podAntiAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #   - weight: 100
+  #     podAffinityTerm:
+  #       labelSelector:
+  #         matchExpressions:
+  #         - key: app.kubernetes.io/name
+  #           operator: In
+  #           values:
+  #           - rune
+  #       topologyKey: kubernetes.io/hostname
+
+nodeSelector: {}
+tolerations: []
+
+# ---------------------------------------------------------------------------
+# Telemetry (optional; disabled by default)
+# ---------------------------------------------------------------------------
+telemetry:
+  enabled: false
+  # image: ghcr.io/lpasquali/rune-telemetry:main-xyz
+  # redfishEndpoint: ""
+  # pduEndpoint: ""
+  # pollIntervalSeconds: 30
