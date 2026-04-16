@@ -1,0 +1,28 @@
+---
+# Example RuneDatabase Claim for GCP Cloud SQL
+apiVersion: database.infra.rune.ai/v1alpha1
+kind: RuneDatabase
+metadata:
+  name: rune-main
+  namespace: rune
+spec:
+  compositionRef:
+    name: runedatabase-gcp
+  parameters:
+    provider: gcp
+    region: us-central1
+    version: "16"
+    gcp:
+      tier: db-f1-micro
+      availabilityType: ZONAL
+    connectionSecretName: rune-db-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - GCP project with API enabled
+# - Google Cloud credentials configured in Crossplane ProviderConfig
+# - provider-gcp installed and ProviderConfig configured
+#
+# To apply:
+# kubectl apply -f rune-database-gcp.yaml

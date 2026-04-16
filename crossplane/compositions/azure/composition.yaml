@@ -1,0 +1,215 @@
+---
+# Azure Database for PostgreSQL Flexible Server Composition
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runedatabase-azure
+  labels:
+    provider: azure
+spec:
+  compositeTypeRef:
+    apiVersion: database.infra.rune.ai/v1alpha1
+    kind: XRuneDatabase
+  mode: Pipeline
+  pipeline:
+    - step: provision-azure-db
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-azure-db
+        spec:
+          resources:
+            - name: azure-flexible-server
+              base:
+                apiVersion: >-
+                  dbforpostgresql.azure.upbound.io/v1beta1
+                kind: FlexibleServer
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      azure-flexible-server
+                spec:
+                  forProvider:
+                    location: eastus
+                    resourceGroupNameRef:
+                      name: rune-rg
+                    administratorLogin: rune
+                    administratorPassword: ChangeMeOnce!
+                    skuName: B_Standard_B1s
+                    version: "16"
+                    storageMb: 32768
+                    backupRetentionDays: 7
+                  managementPolicies:
+                    - "Observe"
+                    - "Create"
+                    - "Update"
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.region
+                  toFieldPath: spec.forProvider.location
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.version
+                  toFieldPath: spec.forProvider.version
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.azure.skuName
+                  toFieldPath: spec.forProvider.skuName
+    - step: write-connection-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: create-azure-secret
+        spec:
+          delimiters:
+            left: "[["
+            right: "]]"
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: >-
+                    azure-secret-object
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-db-secret
+                      namespace: rune
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                    type: Opaque
+                    stringData:
+                      RUNE_DB_URL: >-
+                        postgresql://rune:ChangeMeOnce!@[[
+                        .observed.resources.azureFlexibleServer.
+                        status.atProvider.fqdn ]]:5432/rune
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready
+
+---
+# Azure Blob Storage Composition
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runeobjectstore-azure
+  labels:
+    provider: azure
+spec:
+  compositeTypeRef:
+    apiVersion: storage.infra.rune.ai/v1alpha1
+    kind: XRuneObjectStore
+  mode: Pipeline
+  pipeline:
+    - step: create-azure-storage
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-azure-storage
+        spec:
+          resources:
+            - name: azure-storage-account
+              base:
+                apiVersion: storage.azure.upbound.io/v1beta1
+                kind: Account
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      azure-storage-account
+                spec:
+                  forProvider:
+                    location: eastus
+                    resourceGroupNameRef:
+                      name: rune-rg
+                    accountTier: Standard
+                    accountReplicationType: LRS
+                    accessTier: Hot
+                  managementPolicies:
+                    - "Observe"
+                    - "Create"
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.region
+                  toFieldPath: spec.forProvider.location
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.azure.accessTier
+                  toFieldPath: spec.forProvider.accessTier
+            - name: azure-storage-container
+              base:
+                apiVersion: storage.azure.upbound.io/v1beta1
+                kind: Container
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      azure-storage-container
+                spec:
+                  forProvider:
+                    storageAccountNameRef:
+                      name: azure-storage-account
+                    containerAccessType: private
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.bucketName
+                  toFieldPath: metadata.name
+    - step: write-storage-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: create-storage-secret
+        spec:
+          delimiters:
+            left: "[["
+            right: "]]"
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: >-
+                    storage-secret-object
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-s3-secret
+                      namespace: rune
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                    type: Opaque
+                    stringData:
+                      S3_ACCESS_KEY_ID: placeholder
+                      S3_SECRET_ACCESS_KEY: placeholder
+                      S3_ENDPOINT: https://blob.core.windows.net
+                      S3_BUCKET: >-
+                        [[ .composite.spec.parameters.bucketName ]]
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready

@@ -1,0 +1,27 @@
+---
+# Example RuneObjectStore Claim for Azure Blob Storage
+apiVersion: storage.infra.rune.ai/v1alpha1
+kind: RuneObjectStore
+metadata:
+  name: rune-storage
+  namespace: rune
+spec:
+  compositionRef:
+    name: runeobjectstore-azure
+  parameters:
+    provider: azure
+    bucketName: rune-data
+    region: eastus
+    azure:
+      accessTier: Hot
+    connectionSecretName: rune-s3-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - Azure subscription with provider-azure configured
+# - Resource group "rune-rg" pre-created
+# - Storage account permissions
+#
+# To apply:
+# kubectl apply -f rune-objectstore-azure.yaml
