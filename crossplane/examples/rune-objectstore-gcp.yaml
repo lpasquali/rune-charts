@@ -1,0 +1,27 @@
+---
+# Example RuneObjectStore Claim for GCP GCS
+apiVersion: storage.infra.rune.ai/v1alpha1
+kind: RuneObjectStore
+metadata:
+  name: rune-storage
+  namespace: rune
+spec:
+  compositionRef:
+    name: runeobjectstore-gcp
+  parameters:
+    provider: gcp
+    bucketName: rune-data-us
+    region: US
+    gcp:
+      storageClass: STANDARD
+      uniformBucketLevelAccess: true
+    connectionSecretName: rune-s3-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - GCP project with provider-gcp configured
+# - Service account with Storage permissions
+#
+# To apply:
+# kubectl apply -f rune-objectstore-gcp.yaml

@@ -1,0 +1,28 @@
+---
+# Example values for RUNE on Azure with Crossplane-provisioned
+# Flexible Server and Blob storage
+
+rune:
+  database:
+    existingSecret: rune-db-secret
+    existingSecretKey: RUNE_DB_URL
+
+postgres:
+  enabled: false
+
+s3:
+  enabled: true
+  bucket: rune-data
+  region: eastus
+  endpoint: https://blob.core.windows.net
+  existingSecret: rune-s3-secret
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

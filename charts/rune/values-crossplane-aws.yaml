@@ -1,0 +1,30 @@
+---
+# Example values for RUNE on AWS with Crossplane-provisioned RDS and S3
+#
+# To use:
+#   helm install rune . -f values-crossplane-aws.yaml -n rune
+
+rune:
+  database:
+    existingSecret: rune-db-secret
+    existingSecretKey: RUNE_DB_URL
+
+postgres:
+  enabled: false
+
+s3:
+  enabled: true
+  bucket: rune-data-us-east-1
+  region: us-east-1
+  endpoint: https://s3.amazonaws.com
+  existingSecret: rune-s3-secret
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

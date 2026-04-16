@@ -1,0 +1,27 @@
+---
+# Example RuneObjectStore Claim for AWS S3
+apiVersion: storage.infra.rune.ai/v1alpha1
+kind: RuneObjectStore
+metadata:
+  name: rune-storage
+  namespace: rune
+spec:
+  compositionRef:
+    name: runeobjectstore-aws
+  parameters:
+    provider: aws
+    bucketName: rune-data-us-east-1
+    region: us-east-1
+    aws:
+      storageClass: STANDARD
+      blockPublicAccess: true
+    connectionSecretName: rune-s3-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - AWS account with provider-aws configured
+# - IAM permissions for S3 and IAM operations
+#
+# To apply:
+# kubectl apply -f rune-objectstore-aws.yaml

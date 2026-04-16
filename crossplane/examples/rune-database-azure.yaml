@@ -1,0 +1,27 @@
+---
+# Example RuneDatabase Claim for Azure Database for PostgreSQL
+apiVersion: database.infra.rune.ai/v1alpha1
+kind: RuneDatabase
+metadata:
+  name: rune-main
+  namespace: rune
+spec:
+  compositionRef:
+    name: runedatabase-azure
+  parameters:
+    provider: azure
+    region: eastus
+    version: "16"
+    azure:
+      skuName: B_Standard_B1s
+    connectionSecretName: rune-db-secret
+    targetNamespace: rune
+
+---
+# Prerequisites:
+# - Azure subscription with credentials configured
+# - Resource group "rune-rg" pre-created
+# - provider-azure installed and ProviderConfig configured
+#
+# To apply:
+# kubectl apply -f rune-database-azure.yaml
