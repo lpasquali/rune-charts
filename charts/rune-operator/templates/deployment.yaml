@@ -29,10 +29,18 @@ spec:
             - --leader-elect={{ .Values.leaderElect }}
             - --estop-enabled={{ .Values.estop.enabled }}
             - --estop-configmap-name={{ .Values.estop.configMapName }}
+            {{- if .Values.pprof.enabled }}
+            - --pprof-bind-address={{ .Values.pprof.bindAddress }}
+            {{- end }}
           ports:
             - name: metrics
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.pprof.enabled }}
+            - name: pprof
+              containerPort: 6060
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

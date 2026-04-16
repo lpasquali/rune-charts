@@ -18,6 +18,12 @@ rbac:
 
 leaderElect: true
 
+# Go net/http/pprof (controller-runtime). When enabled, binds a separate address
+# (default :6060). Use kubectl port-forward to reach it from your workstation.
+pprof:
+  enabled: false
+  bindAddress: ":6060"
+
 # ---------------------------------------------------------------------------
 # Issue #16 — UAT rootless / read-only deployment
 # These defaults satisfy the Kubernetes "Restricted" Pod Security Standard.
