@@ -1,0 +1,47 @@
+---
+# Example RuneObjectStore Claim for MinIO (on-prem S3-compatible storage)
+# This demonstrates how to provision S3 credentials from MinIO using
+# Crossplane, which writes rune-s3-secret that Helm chart expects.
+
+apiVersion: storage.infra.rune.ai/v1alpha1
+kind: RuneObjectStore
+metadata:
+  name: rune-storage
+  namespace: rune
+spec:
+  parameters:
+    provider: minio
+    bucketName: rune-data
+    credentialsSecretRef:
+      namespace: minio-tenant
+      name: minio-root-secret
+    connectionSecretName: rune-s3-secret
+    targetNamespace: rune
+    versioning: false
+
+---
+# Expected outcome:
+# 1. Crossplane references Secret "minio-root-secret" in minio-tenant
+#    namespace (created by MinIO Operator)
+# 2. Copies keys: rootUser → S3_ACCESS_KEY_ID,
+#                 rootPassword → S3_SECRET_ACCESS_KEY
+# 3. Creates Secret "rune-s3-secret" in rune namespace with those keys
+# 4. rune-charts deployment.yaml mounts rune-s3-secret and injects
+#    S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY env vars
+# 5. rune-api reads credentials from environment and connects to MinIO
+
+# Prerequisites:
+# - MinIO Operator installed (creates Tenant CRs)
+# - MinIO Tenant provisioned in minio-tenant namespace
+# - Secret minio-root-secret exists with keys: rootUser, rootPassword
+
+# To apply this claim:
+# kubectl apply -f rune-objectstore-minio.yaml
+
+# To verify:
+# kubectl get runeobjectstores -n rune
+# kubectl get secret rune-s3-secret -n rune \
+#   -o jsonpath='{.data.S3_ACCESS_KEY_ID}' | base64 -d
+
+# To delete (cascade deletes rune-s3-secret):
+# kubectl delete runeobjectstore rune-storage -n rune

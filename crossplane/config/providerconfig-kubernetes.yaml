@@ -1,0 +1,28 @@
+---
+# ProviderConfig for provider-kubernetes using in-cluster credentials
+# No external kubeconfig needed — provider uses its ServiceAccount's token
+
+apiVersion: kubernetes.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: kubernetes-provider
+spec:
+  credentials:
+    source: InjectedIdentity
+
+---
+# Optional: If you need to explicitly scope the provider to specific
+# namespaces or use a different ServiceAccount, you can create additional
+# ProviderConfigs and reference them by name in Compositions.
+#
+# Example: restricted provider for read-only access
+#
+# apiVersion: kubernetes.crossplane.io/v1alpha1
+# kind: ProviderConfig
+# metadata:
+#   name: kubernetes-provider-readonly
+# spec:
+#   credentials:
+#     source: InjectedIdentity
+#   credentials:
+#     commonName: crossplane-read-only

@@ -1,0 +1,44 @@
+---
+# Example RuneDatabase Claim for on-prem CNPG deployment
+# This demonstrates how to provision PostgreSQL via CNPG Operator
+# using Crossplane, which writes rune-db-secret that Helm chart expects.
+
+apiVersion: database.infra.rune.ai/v1alpha1
+kind: RuneDatabase
+metadata:
+  name: rune-main
+  namespace: rune
+spec:
+  parameters:
+    provider: cnpg
+    clusterName: rune-postgres
+    instances: 1
+    storageSize: 10Gi
+    storageClass: standard
+    version: "16"
+    connectionSecretName: rune-db-secret
+    targetNamespace: rune
+
+---
+# Expected outcome:
+# 1. Crossplane creates postgresql.cnpg.io/v1 Cluster in cnpg-system
+#    named "rune-postgres"
+# 2. CNPG operator provisions the cluster and creates Secret
+#    "rune-postgres-app" with keys: username, password, host, port, dbname
+# 3. Crossplane function-go-templating reads that Secret and creates
+#    Secret "rune-db-secret" in rune namespace with key:
+#    RUNE_DB_URL=postgresql://rune:rune@<host>:5432/rune
+# 4. rune-charts deployment.yaml mounts rune-db-secret and injects
+#    RUNE_DB_URL env var into rune-api pod
+# 5. rune-api reads RUNE_DB_URL from environment and connects to database
+
+# To apply this claim:
+# kubectl apply -f rune-database-cnpg.yaml
+
+# To verify:
+# kubectl get runedatabases -n rune
+# kubectl get secret rune-db-secret -n rune \
+#   -o jsonpath='{.data.RUNE_DB_URL}' | base64 -d
+
+# To delete (cascade deletes rune-db-secret):
+# kubectl delete runedatabase rune-main -n rune

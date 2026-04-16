@@ -1,0 +1,68 @@
+---
+# Example values for RUNE on Kubernetes with Crossplane-provisioned
+# CNPG PostgreSQL and MinIO object storage.
+#
+# This overlay assumes:
+# 1. Crossplane v2.2.0 installed with RuneDatabase and RuneObjectStore XRDs
+# 2. CNPG operator installed in cnpg-system namespace
+# 3. RuneDatabase Claim applied (creates rune-db-secret with RUNE_DB_URL)
+# 4. RuneObjectStore Claim applied (creates rune-s3-secret with S3_* keys)
+#
+# To use:
+#   helm install rune . -f values-crossplane-cnpg.yaml -n rune
+
+# Database: use existing Secret written by Crossplane
+rune:
+  database:
+    existingSecret: rune-db-secret
+    existingSecretKey: RUNE_DB_URL
+
+# PostgreSQL: disabled (external CNPG via Crossplane)
+postgres:
+  enabled: false
+
+# S3: use existing Secret written by Crossplane
+s3:
+  enabled: true
+  bucket: rune-data
+  endpoint: http://minio.minio-tenant.svc.cluster.local:9000
+  existingSecret: rune-s3-secret
+
+# Optional: Add MinIO endpoint configuration
+# If your MinIO is in minio-tenant namespace with service name "minio":
+# s3:
+#   endpoint: http://minio.minio-tenant.svc.cluster.local:9000
+
+# Operator: standard deployment
+rune-operator:
+  enabled: true
+
+# Audit: standard deployment
+rune-audit:
+  enabled: true
+
+# UI: standard deployment
+rune-ui:
+  enabled: true
+  rune:
+    apiTokenSecretRef: default/rune-api-token
+
+# Replicas for HA (optional, requires multi-pod coordination)
+# Note: RUNE API must use external PostgreSQL for multi-pod deployments
+replicaCount: 1
+
+# Resources
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Pod Security
+podSecurityPolicy: restricted
+serviceAccount:
+  create: true
+  name: rune-api
+  automountServiceAccountToken: true

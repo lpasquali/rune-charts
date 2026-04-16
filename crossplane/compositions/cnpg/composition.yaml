@@ -1,0 +1,200 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runedatabase-cnpg
+spec:
+  compositeTypeRef:
+    apiVersion: database.infra.rune.ai/v1alpha1
+    kind: XRuneDatabase
+  mode: Pipeline
+  pipeline:
+    # Step 1: Patch and transform — create provider-kubernetes Object
+    # wrapping a CNPG Cluster CR
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-cnpg-cluster
+        spec:
+          resources:
+            - name: cnpg-cluster-object
+              base:
+                apiVersion: kubernetes.crossplane.io/v1alpha2
+                kind: Object
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      cnpg-cluster-object
+                spec:
+                  deletionPolicy: Delete
+                  providerConfigRef:
+                    name: kubernetes-provider
+                  forProvider:
+                    manifest:
+                      apiVersion: postgresql.cnpg.io/v1
+                      kind: Cluster
+                      metadata:
+                        namespace: cnpg-system
+                      spec:
+                        instances: 1
+                        postgresql:
+                          parameters:
+                            max_connections: "100"
+                            shared_buffers: "256MB"
+                        bootstrap:
+                          initdb:
+                            database: rune
+                            owner: rune
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.clusterName
+                  toFieldPath: >-
+                    spec.forProvider.manifest.metadata.name
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.instances
+                  toFieldPath: >-
+                    spec.forProvider.manifest.spec.instances
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.storageClass
+                  toFieldPath: >-
+                    spec.forProvider.manifest.spec.storage.storageClass
+                - type: FromCompositeFieldPath
+                  fromFieldPath: spec.parameters.storageSize
+                  toFieldPath: >-
+                    spec.forProvider.manifest.spec.storage.size
+    # Step 2: Go templating — read CNPG Secret, assemble RUNE_DB_URL,
+    # create rune-db-secret
+    - step: create-connection-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: assemble-connection-string
+        spec:
+          delimiters:
+            left: "[["
+            right: "]]"
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: >-
+                    rune-db-secret-object
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-db-secret
+                      namespace: rune
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                    type: Opaque
+                    stringData:
+                      RUNE_DB_URL: >-
+                        postgresql://rune:rune@[[
+                        .observed.resources.cnpgClusterObject.
+                        status.atProvider.manifest.status.
+                        writeService ]]:5432/rune
+    # Step 3: Auto-ready — mark XR ready when secrets are synced
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready
+
+---
+# MinIO composition (simpler, uses references pattern)
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runeobjectstore-minio
+spec:
+  compositeTypeRef:
+    apiVersion: storage.infra.rune.ai/v1alpha1
+    kind: XRuneObjectStore
+  mode: Pipeline
+  pipeline:
+    # Single step: create provider-kubernetes Object that copies MinIO
+    # credentials and creates rune-s3-secret
+    - step: create-s3-secret
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: PatchAndTransformRequest
+        metadata:
+          name: create-minio-secret
+        spec:
+          resources:
+            - name: minio-s3-secret
+              base:
+                apiVersion: kubernetes.crossplane.io/v1alpha2
+                kind: Object
+                metadata:
+                  annotations:
+                    crossplane.io/composition-resource-name: >-
+                      minio-s3-secret-object
+                spec:
+                  deletionPolicy: Delete
+                  references:
+                    - patchesFrom:
+                        apiVersion: v1
+                        kind: Secret
+                        namespace: minio-tenant
+                        fieldPath: data.rootUser
+                      toFieldPath: data.S3_ACCESS_KEY_ID
+                    - patchesFrom:
+                        apiVersion: v1
+                        kind: Secret
+                        namespace: minio-tenant
+                        fieldPath: data.rootPassword
+                      toFieldPath: data.S3_SECRET_ACCESS_KEY
+                  providerConfigRef:
+                    name: kubernetes-provider
+                  forProvider:
+                    manifest:
+                      apiVersion: v1
+                      kind: Secret
+                      metadata:
+                        name: rune-s3-secret
+                        namespace: rune
+                        labels:
+                          app.kubernetes.io/managed-by: crossplane
+                      type: Opaque
+                      data: {}
+              patches:
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.credentialsSecretRef.name
+                  toFieldPath: >-
+                    spec.references[0].patchesFrom.name
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.credentialsSecretRef.namespace
+                  toFieldPath: >-
+                    spec.references[0].patchesFrom.namespace
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.credentialsSecretRef.name
+                  toFieldPath: >-
+                    spec.references[1].patchesFrom.name
+                - type: FromCompositeFieldPath
+                  fromFieldPath: >-
+                    spec.parameters.credentialsSecretRef.namespace
+                  toFieldPath: >-
+                    spec.references[1].patchesFrom.namespace
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready
