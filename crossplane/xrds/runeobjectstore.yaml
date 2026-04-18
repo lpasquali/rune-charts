@@ -1,0 +1,151 @@
+---
+# RuneObjectStore — CompositeResourceDefinition
+#
+# Abstracts "an S3-compatible bucket RUNE can read/write" across cloud
+# (AWS S3, GCP GCS, Azure Blob) and on-prem (MinIO) providers. The
+# selected Composition creates the bucket / container AND writes a
+# Kubernetes Secret named `rune-s3-secret` with keys
+# `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`,
+# `S3_BUCKET` that the rune chart consumes via `s3.existingSecret`.
+#
+# v1 API + scope: LegacyCluster is used intentionally to preserve the
+# Claims UX. See ADR 0007 in rune-docs.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xruneobjectstores.storage.infra.rune.ai
+spec:
+  scope: LegacyCluster
+  group: storage.infra.rune.ai
+  names:
+    kind: XRuneObjectStore
+    plural: xruneobjectstores
+  claimNames:
+    kind: RuneObjectStore
+    plural: runeobjectstores
+  defaultCompositionRef:
+    name: runeobjectstore-minio
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      description: >-
+                        Informational tag ("aws" | "gcp" | "azure" | "minio").
+                      enum: ["", "aws", "gcp", "azure", "minio"]
+                      default: ""
+                    targetNamespace:
+                      type: string
+                      description: >-
+                        Informational. Compositions currently hardcode
+                        namespace "rune" for the written Secret; reserved
+                        for future use.
+                      default: ""
+                    connectionSecretName:
+                      type: string
+                      description: >-
+                        Informational. Compositions currently hardcode
+                        "rune-s3-secret" as the managed Secret name.
+                      default: ""
+                    aws:
+                      type: object
+                      properties:
+                        storageClass:
+                          type: string
+                          description: S3 storage class.
+                          default: "STANDARD"
+                        blockPublicAccess:
+                          type: boolean
+                          description: Enable BlockPublicAccess on the bucket.
+                          default: true
+                    gcp:
+                      type: object
+                      properties:
+                        storageClass:
+                          type: string
+                          description: GCS storage class.
+                          default: "STANDARD"
+                        uniformBucketLevelAccess:
+                          type: boolean
+                          description: >-
+                            Require uniform bucket-level access (no ACLs).
+                          default: true
+                    azure:
+                      type: object
+                      properties:
+                        accessTier:
+                          type: string
+                          description: Blob access tier.
+                          enum: ["Hot", "Cool", "Archive"]
+                          default: "Hot"
+                    bucketName:
+                      type: string
+                      description: >-
+                        Bucket / container name. Must be DNS-1123
+                        compatible for MinIO; cloud providers further
+                        constrain (e.g. S3 global uniqueness).
+                      minLength: 3
+                      maxLength: 63
+                    region:
+                      type: string
+                      description: >-
+                        Cloud region. Ignored by on-prem (MinIO).
+                      default: ""
+                    minio:
+                      type: object
+                      properties:
+                        tenantName:
+                          type: string
+                          description: >-
+                            Name of the MinIO Tenant CR to create.
+                          default: "rune-minio"
+                        namespace:
+                          type: string
+                          description: >-
+                            Namespace for the MinIO Tenant and the
+                            rune-s3-secret it writes.
+                          default: "rune"
+                        servers:
+                          type: integer
+                          description: MinIO server count.
+                          default: 1
+                          minimum: 1
+                        volumesPerServer:
+                          type: integer
+                          description: Volumes per MinIO server.
+                          default: 1
+                          minimum: 1
+                        volumeSize:
+                          type: string
+                          description: >-
+                            PVC size per volume (Kubernetes quantity,
+                            e.g. "10Gi").
+                          default: "10Gi"
+                  required:
+                    - bucketName
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                endpoint:
+                  type: string
+                  description: >-
+                    Observed S3 endpoint URL (e.g.
+                    https://minio.rune.svc:443).
+                ready:
+                  type: boolean
+                  description: >-
+                    True once the downstream provider reports the
+                    bucket / container as available.

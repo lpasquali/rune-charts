@@ -1,0 +1,57 @@
+---
+# Crossplane RBAC for RUNE compositions
+#
+# provider-kubernetes needs write access to the target namespace(s) so it
+# can create the CNPG Cluster, MinIO Tenant, and managed Secrets. We grant
+# a narrow ClusterRole and bind it to the provider-kubernetes
+# ServiceAccount. The account name follows the Crossplane convention
+# "provider-kubernetes-<installID>"; operators MUST replace the binding
+# subject with their actual SA name after `kubectl get pods -n crossplane-system`.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rune-crossplane-provisioner
+  labels:
+    app.kubernetes.io/managed-by: rune-charts
+    infra.rune.ai/component: crossplane
+rules:
+  # Core objects we write via provider-kubernetes.
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - namespaces
+      - configmaps
+    verbs: [get, list, watch, create, update, patch, delete]
+  # CNPG-specific resources.
+  - apiGroups:
+      - postgresql.cnpg.io
+    resources:
+      - clusters
+      - scheduledbackups
+      - backups
+    verbs: [get, list, watch, create, update, patch, delete]
+  # MinIO-specific resources.
+  - apiGroups:
+      - minio.min.io
+    resources:
+      - tenants
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rune-crossplane-provisioner
+  labels:
+    app.kubernetes.io/managed-by: rune-charts
+    infra.rune.ai/component: crossplane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rune-crossplane-provisioner
+subjects:
+  # NOTE: Replace <install-id> with the actual provider-kubernetes install
+  # ID from your cluster:
+  #   kubectl -n crossplane-system get sa | grep provider-kubernetes
+  - kind: ServiceAccount
+    name: provider-kubernetes-<install-id>
+    namespace: crossplane-system

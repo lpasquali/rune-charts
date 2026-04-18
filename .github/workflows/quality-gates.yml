@@ -62,10 +62,33 @@ jobs:
   guard:
     uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
 
+  crossplane:
+    name: RuneGate/Validate/Crossplane
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Crossplane CLI (crank)
+        run: |
+          set -euo pipefail
+          VERSION="v2.2.0"
+          ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH="arm64";; x86_64) ARCH="amd64";; esac
+          URL="https://releases.crossplane.io/stable/${VERSION}/bin/linux_${ARCH}/crank"
+          sudo curl -fsSL "$URL" -o /usr/local/bin/crank
+          sudo chmod +x /usr/local/bin/crank
+          crank version
+      - name: Validate Crossplane Compositions against XRDs
+        run: |
+          set -euo pipefail
+          crank beta validate crossplane/xrds crossplane/compositions
+      - name: Validate Crossplane example Claims against XRDs
+        run: |
+          set -euo pipefail
+          crank beta validate crossplane/xrds crossplane/examples
+
   compliance:
-    needs: [security, helm, integration, guard]
+    needs: [security, helm, integration, guard, crossplane]
     if: always()
     uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
     with:
       needs-json: ${{ toJson(needs) }}
-      merge-gate-excludes: "helm,integration,security,guard" # Force pass
+      merge-gate-excludes: "helm,integration,security,guard,crossplane" # Force pass
