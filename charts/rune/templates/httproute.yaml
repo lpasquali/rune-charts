@@ -1,0 +1,43 @@
+{{- if .Values.gatewayApi.enabled -}}
+{{- $fullName := include "rune.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+{{- if not .Values.gatewayApi.parentRef.name -}}
+{{- fail "gatewayApi.enabled=true requires gatewayApi.parentRef.name to reference an existing Gateway" -}}
+{{- end -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "rune.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gatewayApi.parentRef.name | quote }}
+      {{- with .Values.gatewayApi.parentRef.namespace }}
+      namespace: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.gatewayApi.parentRef.sectionName }}
+      sectionName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.gatewayApi.parentRef.port }}
+      port: {{ . }}
+      {{- end }}
+  {{- with .Values.gatewayApi.hostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- if .Values.gatewayApi.rules }}
+    {{- toYaml .Values.gatewayApi.rules | nindent 4 }}
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+    {{- end }}
+{{- end }}

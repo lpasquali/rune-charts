@@ -73,6 +73,20 @@ Override any value with `--set key=value` or a custom `values.yaml` file.
 | `ingress.hosts` | see values.yaml | List of `{host, paths}` entries |
 | `ingress.tls` | `[]` | TLS configuration; add entries for HTTPS |
 
+## Gateway API (optional)
+
+The chart ships an opt-in `HTTPRoute` for clusters that prefer Gateway API over Ingress. Independent of the `ingress:` block; either, both, or neither may be enabled. Requires `gateway.networking.k8s.io/v1` CRDs on the cluster; when `gatewayApi.enabled` is `false` the chart does not reference those CRDs at all (safe on clusters without them).
+
+| Key | Default | Description |
+|---|---|---|
+| `gatewayApi.enabled` | `false` | Render an `HTTPRoute` and attach it to an existing Gateway |
+| `gatewayApi.parentRef.name` | `""` | **Required** when enabled. Name of the `Gateway` to attach to (not created by this chart) |
+| `gatewayApi.parentRef.namespace` | `""` | Namespace of the Gateway (empty → same namespace as this release) |
+| `gatewayApi.parentRef.sectionName` | `""` | Optional listener name on the Gateway |
+| `gatewayApi.parentRef.port` | `null` | Optional listener port on the Gateway |
+| `gatewayApi.hostnames` | `[]` | Hostnames served by this route (must be allowed by the Gateway) |
+| `gatewayApi.rules` | `[]` | HTTPRoute rules; empty → one default rule sending all paths to this release's Service on `service.port` |
+
 ---
 
 ## Resources & scheduling
