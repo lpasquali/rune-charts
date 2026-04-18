@@ -68,8 +68,8 @@ Override any value with `--set key=value` or a custom `values.yaml` file.
 | Key | Default | Description |
 |---|---|---|
 | `ingress.enabled` | `false` | Enable an Ingress resource |
-| `ingress.className` | `""` | IngressClass name |
-| `ingress.annotations` | `{}` | Ingress annotations (e.g. cert-manager issuer) |
+| `ingress.className` | `""` | IngressClass name; empty uses the cluster's default IngressClass (the one marked `ingressclass.kubernetes.io/is-default-class: "true"`). Chart is controller-agnostic (ADR 0008) |
+| `ingress.annotations` | `{}` | Controller-agnostic annotations (e.g. cert-manager issuer). Do not add nginx-ingress-specific annotations here |
 | `ingress.hosts` | see values.yaml | List of `{host, paths}` entries |
 | `ingress.tls` | `[]` | TLS configuration; add entries for HTTPS |
 

@@ -167,9 +167,17 @@ service:
   annotations: {}
 
 ingress:
+  # The chart is ingress-agnostic (ADR 0008). Set enabled: true and
+  # configure the block below for production access via the cluster's
+  # chosen Ingress controller.
   enabled: false
-  # Set to true for production access via Ingress; configure carefully
-  # className: "nginx"
+  # Leave empty ("") to use the cluster's default IngressClass
+  # (the one marked ingressclass.kubernetes.io/is-default-class: "true").
+  # Otherwise set to your platform's class name.
+  # Examples: "traefik", "envoy", "cilium", "istio", "nginx".
+  # className: ""
+  # Controller-agnostic annotations only. Do NOT add
+  # nginx-ingress-specific annotations here.
   # annotations:
   #   cert-manager.io/cluster-issuer: letsencrypt-prod
   # hosts:
