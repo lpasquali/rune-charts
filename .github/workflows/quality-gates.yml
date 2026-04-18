@@ -75,7 +75,10 @@ jobs:
           URL="https://releases.crossplane.io/stable/${VERSION}/bin/linux_${ARCH}/crank"
           sudo curl -fsSL "$URL" -o /usr/local/bin/crank
           sudo chmod +x /usr/local/bin/crank
-          crank version
+          # `crank version` tries to reach the cluster's Crossplane server;
+          # in CI there is no cluster, so only print the client version.
+          crank version --client 2>/dev/null || crank --help >/dev/null
+          ls -l /usr/local/bin/crank
       - name: Validate Crossplane Compositions against XRDs
         run: |
           set -euo pipefail
