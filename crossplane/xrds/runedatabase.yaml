@@ -1,0 +1,156 @@
+---
+# RuneDatabase — CompositeResourceDefinition
+#
+# Abstracts "a PostgreSQL database that RUNE can connect to" across
+# cloud (AWS RDS, GCP Cloud SQL, Azure Database for PostgreSQL) and
+# on-prem (CNPG) providers. The selected Composition provisions the
+# underlying resource AND writes a Kubernetes Secret named
+# `rune-db-secret` with a single key `RUNE_DB_URL` that the rune
+# chart consumes verbatim via `rune.database.existingSecret`.
+#
+# v1 API + scope: LegacyCluster is used intentionally to preserve the
+# Crossplane Claims UX (operators apply a RuneDatabase Claim, not a
+# raw XRuneDatabase XR). See ADR 0007 in rune-docs.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xrunedatabases.database.infra.rune.ai
+spec:
+  scope: LegacyCluster
+  group: database.infra.rune.ai
+  names:
+    kind: XRuneDatabase
+    plural: xrunedatabases
+  claimNames:
+    kind: RuneDatabase
+    plural: runedatabases
+  defaultCompositionRef:
+    name: runedatabase-cnpg
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  description: >-
+                    Knobs common across all Compositions. Provider-specific
+                    overrides live under their own sub-object (aws, gcp,
+                    azure, cnpg) and are optional.
+                  properties:
+                    provider:
+                      type: string
+                      description: >-
+                        Informational tag ("aws" | "gcp" | "azure" | "cnpg").
+                        Compositions are selected via spec.compositionRef /
+                        compositionSelector — this field is not wired into
+                        managed resources.
+                      enum: ["", "aws", "gcp", "azure", "cnpg"]
+                      default: ""
+                    targetNamespace:
+                      type: string
+                      description: >-
+                        Informational. Compositions currently hardcode
+                        namespace "rune" for the written Secret; this field
+                        is reserved for future use.
+                      default: ""
+                    connectionSecretName:
+                      type: string
+                      description: >-
+                        Informational. Compositions currently hardcode
+                        "rune-db-secret" as the managed Secret name; this
+                        field is reserved for future use.
+                      default: ""
+                    version:
+                      type: string
+                      description: >-
+                        PostgreSQL major version (e.g. "16"). Each provider
+                        may interpret this differently (POSTGRES_16 on GCP,
+                        "16.1" on AWS, "16" on Azure / CNPG).
+                      default: "16"
+                    region:
+                      type: string
+                      description: >-
+                        Cloud region or logical location. Ignored by
+                        on-prem Compositions (CNPG).
+                      default: ""
+                    storageGB:
+                      type: integer
+                      description: >-
+                        Desired storage in GiB. Providers snap to the
+                        closest supported size.
+                      default: 20
+                      minimum: 10
+                    aws:
+                      type: object
+                      properties:
+                        instanceClass:
+                          type: string
+                          description: >-
+                            RDS instance class without the "db." prefix
+                            (e.g. "t3.micro").
+                          default: "t3.micro"
+                        multiAZ:
+                          type: boolean
+                          description: Enable Multi-AZ deployment.
+                          default: false
+                    gcp:
+                      type: object
+                      properties:
+                        tier:
+                          type: string
+                          description: Cloud SQL tier (e.g. "db-f1-micro").
+                          default: "db-f1-micro"
+                        availabilityType:
+                          type: string
+                          description: Cloud SQL availability type.
+                          enum: ["ZONAL", "REGIONAL"]
+                          default: "ZONAL"
+                    azure:
+                      type: object
+                      properties:
+                        skuName:
+                          type: string
+                          description: Flexible Server SKU name.
+                          default: "B_Standard_B1s"
+                    cnpg:
+                      type: object
+                      properties:
+                        clusterName:
+                          type: string
+                          description: >-
+                            Name of the CNPG Cluster to provision.
+                          default: "rune-postgres"
+                        instances:
+                          type: integer
+                          description: Number of CNPG replicas.
+                          default: 1
+                          minimum: 1
+                        namespace:
+                          type: string
+                          description: >-
+                            Namespace where the CNPG Cluster and the
+                            rune-db-secret will be created.
+                          default: "rune"
+                  required: []
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                address:
+                  type: string
+                  description: >-
+                    Observed connection endpoint as reported by the
+                    underlying managed resource (host[:port]).
+                ready:
+                  type: boolean
+                  description: >-
+                    True once the downstream provider reports the
+                    database as available.

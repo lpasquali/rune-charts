@@ -1,0 +1,128 @@
+---
+# CNPG PostgreSQL on-prem Composition (RuneDatabase)
+#
+# Creates:
+#   1. A CNPG Cluster CR (cloudnative-pg.io/v1) in the requested namespace
+#      with N instances of the requested PostgreSQL major version.
+#   2. A plain Kubernetes Secret `rune-db-secret` in the same namespace
+#      with key `RUNE_DB_URL` pointing at the CNPG Cluster's read/write
+#      Service (cnpg-rw). The credentials are drawn from the Secret
+#      CNPG itself generates for the `app` role.
+#
+# Assumes:
+#   - CNPG operator is installed on the cluster (the chart does NOT
+#     install CNPG).
+#   - Crossplane `provider-kubernetes` is installed and has a
+#     ProviderConfig named `kubernetes-provider`.
+#   - Crossplane functions function-patch-and-transform and
+#     function-go-templating are available (see crossplane/ProviderConfig
+#     installation notes in ADR 0007 / rune-docs).
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runedatabase-cnpg
+  labels:
+    provider: cnpg
+spec:
+  compositeTypeRef:
+    apiVersion: database.infra.rune.ai/v1alpha1
+    kind: XRuneDatabase
+  mode: Pipeline
+  pipeline:
+    - step: create-cnpg-cluster
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: cnpg-cluster
+        spec:
+          source: Inline
+          inline:
+            template: |
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: cnpg-cluster
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: postgresql.cnpg.io/v1
+                    kind: Cluster
+                    metadata:
+                      name: {{ .observed.composite.resource.spec.parameters.cnpg.clusterName | default "rune-postgres" | quote }}
+                      namespace: {{ .observed.composite.resource.spec.parameters.cnpg.namespace | default "rune" | quote }}
+                    spec:
+                      instances: {{ .observed.composite.resource.spec.parameters.cnpg.instances | default 1 }}
+                      imageName: "ghcr.io/cloudnative-pg/postgresql:{{ .observed.composite.resource.spec.parameters.version | default "16" }}"
+                      storage:
+                        size: "{{ .observed.composite.resource.spec.parameters.storageGB | default 20 }}Gi"
+                      bootstrap:
+                        initdb:
+                          database: rune
+                          owner: rune
+    - step: write-connection-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: cnpg-secret
+        spec:
+          source: Inline
+          inline:
+            template: |
+              {{- /*
+                CNPG generates `<cluster>-app` Secret with keys:
+                  - username
+                  - password
+                  - host (FQDN of the -rw Service)
+                  - port
+                  - dbname
+                  - uri (full postgres:// URL)
+                We mirror the `uri` value straight into RUNE_DB_URL.
+                The mirror is implemented as a second provider-kubernetes
+                Object that references the upstream Secret via a literal
+                name derived from the cluster name.
+              */}}
+              {{- $cluster := .observed.composite.resource.spec.parameters.cnpg.clusterName | default "rune-postgres" -}}
+              {{- $ns := .observed.composite.resource.spec.parameters.cnpg.namespace | default "rune" -}}
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: rune-db-secret
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                references:
+                  - patchesFrom:
+                      apiVersion: v1
+                      kind: Secret
+                      name: {{ printf "%s-app" $cluster | quote }}
+                      namespace: {{ $ns | quote }}
+                      fieldPath: data.uri
+                    toFieldPath: data.RUNE_DB_URL
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-db-secret
+                      namespace: {{ $ns | quote }}
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                        infra.rune.ai/composition: runedatabase-cnpg
+                    type: Opaque
+                    data:
+                      RUNE_DB_URL: ""
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready
