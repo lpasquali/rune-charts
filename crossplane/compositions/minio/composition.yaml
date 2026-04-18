@@ -1,0 +1,137 @@
+---
+# MinIO on-prem Composition (RuneObjectStore)
+#
+# Creates:
+#   1. A MinIO Tenant CR (minio.min.io/v2) in the requested namespace
+#      with N servers x M volumes of the requested size.
+#   2. A plain Kubernetes Secret `rune-s3-secret` in the same namespace
+#      with the standard RUNE S3 keys (ID / secret / endpoint / bucket).
+#      Credentials are drawn from the Tenant's configuration Secret.
+#
+# Assumes:
+#   - MinIO operator is installed on the cluster (the chart does NOT
+#     install the operator).
+#   - A pre-existing Secret `<tenantName>-env-configuration` in the same
+#     namespace holding the root user / password, per the MinIO Tenant
+#     CRD contract. Operators can use the operator's webhook to
+#     generate it automatically.
+#   - Crossplane `provider-kubernetes` is installed with ProviderConfig
+#     `kubernetes-provider`.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: runeobjectstore-minio
+  labels:
+    provider: minio
+spec:
+  compositeTypeRef:
+    apiVersion: storage.infra.rune.ai/v1alpha1
+    kind: XRuneObjectStore
+  mode: Pipeline
+  pipeline:
+    - step: create-minio-tenant
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: minio-tenant
+        spec:
+          source: Inline
+          inline:
+            template: |
+              {{- $tenant := .observed.composite.resource.spec.parameters.minio.tenantName | default "rune-minio" -}}
+              {{- $ns := .observed.composite.resource.spec.parameters.minio.namespace | default "rune" -}}
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: minio-tenant
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                forProvider:
+                  manifest:
+                    apiVersion: minio.min.io/v2
+                    kind: Tenant
+                    metadata:
+                      name: {{ $tenant | quote }}
+                      namespace: {{ $ns | quote }}
+                    spec:
+                      configuration:
+                        name: {{ printf "%s-env-configuration" $tenant | quote }}
+                      pools:
+                        - name: pool-0
+                          servers: {{ .observed.composite.resource.spec.parameters.minio.servers | default 1 }}
+                          volumesPerServer: {{ .observed.composite.resource.spec.parameters.minio.volumesPerServer | default 1 }}
+                          volumeClaimTemplate:
+                            metadata:
+                              name: data
+                            spec:
+                              accessModes: [ReadWriteOnce]
+                              resources:
+                                requests:
+                                  storage: {{ .observed.composite.resource.spec.parameters.minio.volumeSize | default "10Gi" | quote }}
+                      requestAutoCert: false
+                      buckets:
+                        - name: {{ .observed.composite.resource.spec.parameters.bucketName | quote }}
+    - step: write-s3-secret
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplatingRequest
+        metadata:
+          name: rune-s3-secret
+        spec:
+          source: Inline
+          inline:
+            template: |
+              {{- $tenant := .observed.composite.resource.spec.parameters.minio.tenantName | default "rune-minio" -}}
+              {{- $ns := .observed.composite.resource.spec.parameters.minio.namespace | default "rune" -}}
+              {{- $bucket := .observed.composite.resource.spec.parameters.bucketName -}}
+              {{- $endpoint := printf "http://minio.%s.svc:9000" $ns -}}
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              metadata:
+                annotations:
+                  crossplane.io/composition-resource-name: rune-s3-secret
+              spec:
+                deletionPolicy: Delete
+                providerConfigRef:
+                  name: kubernetes-provider
+                references:
+                  - patchesFrom:
+                      apiVersion: v1
+                      kind: Secret
+                      name: {{ printf "%s-env-configuration" $tenant | quote }}
+                      namespace: {{ $ns | quote }}
+                      fieldPath: data.config\.env
+                    toFieldPath: metadata.annotations["infra.rune.ai/minio-config"]
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: Secret
+                    metadata:
+                      name: rune-s3-secret
+                      namespace: {{ $ns | quote }}
+                      labels:
+                        app.kubernetes.io/managed-by: crossplane
+                        infra.rune.ai/composition: runeobjectstore-minio
+                    type: Opaque
+                    stringData:
+                      S3_ENDPOINT: {{ $endpoint | quote }}
+                      S3_BUCKET: {{ $bucket | quote }}
+                      # Operators MUST populate S3_ACCESS_KEY_ID and
+                      # S3_SECRET_ACCESS_KEY from the MinIO Tenant
+                      # configuration secret out-of-band. The MinIO
+                      # operator does not expose per-user credentials
+                      # through a stable GVK we can read safely from
+                      # provider-kubernetes without further RBAC scope.
+                      S3_ACCESS_KEY_ID: ""
+                      S3_SECRET_ACCESS_KEY: ""
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready

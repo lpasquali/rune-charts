@@ -1,0 +1,31 @@
+---
+# Example RuneDatabase Claim — on-prem CNPG PostgreSQL
+#
+# Prerequisites on the cluster:
+#   - Crossplane v2.x + function-patch-and-transform + function-go-templating
+#     + function-auto-ready installed.
+#   - provider-kubernetes with a ProviderConfig named `kubernetes-provider`.
+#   - CNPG operator (cloudnative-pg) installed.
+#
+# Apply with:
+#   kubectl apply -f crossplane/examples/rune-database-cnpg.yaml
+#
+# Result: a CNPG Cluster `rune-postgres` in the `rune` namespace, plus
+# a Secret `rune-db-secret` with `RUNE_DB_URL` pointing at
+# rune-postgres-rw. The rune chart consumes it via
+#   rune.database.existingSecret=rune-db-secret
+apiVersion: database.infra.rune.ai/v1alpha1
+kind: RuneDatabase
+metadata:
+  name: rune-database
+  namespace: rune
+spec:
+  compositionRef:
+    name: runedatabase-cnpg
+  parameters:
+    version: "16"
+    storageGB: 20
+    cnpg:
+      clusterName: rune-postgres
+      namespace: rune
+      instances: 1

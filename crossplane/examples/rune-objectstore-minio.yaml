@@ -1,0 +1,34 @@
+---
+# Example RuneObjectStore Claim — on-prem MinIO
+#
+# Prerequisites on the cluster:
+#   - Crossplane v2.x + functions + provider-kubernetes (see CNPG example).
+#   - MinIO operator (operator.min.io) installed.
+#   - A Tenant configuration Secret `rune-minio-env-configuration` in
+#     the `rune` namespace holding `config.env` with the root
+#     credentials (per the MinIO Tenant CRD contract). Operators may
+#     use the MinIO operator's webhook to generate it.
+#   - Once the Tenant is running, copy the generated access/secret key
+#     into `rune-s3-secret` keys S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY
+#     (the composition writes the endpoint + bucket but cannot safely
+#     exfiltrate per-user credentials on its own — see notes in the
+#     composition file and in ADR 0007).
+#
+# Apply with:
+#   kubectl apply -f crossplane/examples/rune-objectstore-minio.yaml
+apiVersion: storage.infra.rune.ai/v1alpha1
+kind: RuneObjectStore
+metadata:
+  name: rune-objectstore
+  namespace: rune
+spec:
+  compositionRef:
+    name: runeobjectstore-minio
+  parameters:
+    bucketName: rune-data
+    minio:
+      tenantName: rune-minio
+      namespace: rune
+      servers: 1
+      volumesPerServer: 1
+      volumeSize: 10Gi
