@@ -95,6 +95,44 @@ ingress:
   #      - rune.example.com
 
 # ---------------------------------------------------------------------------
+# Gateway API (optional)
+# ---------------------------------------------------------------------------
+# Opt-in HTTPRoute for clusters that prefer Gateway API over Ingress
+# (Cilium Gateway, Istio Gateway, Envoy Gateway, ...). Independent of
+# the `ingress:` block above — you may enable either, both, or neither.
+# Requires the Gateway API CRDs (gateway.networking.k8s.io/v1) installed
+# on the cluster; when `enabled: false` this chart does not reference
+# those CRDs, so it remains installable on clusters without them.
+gatewayApi:
+  enabled: false
+  # Reference to the Gateway this HTTPRoute attaches to. The Gateway is
+  # NOT managed by this chart — the cluster operator provisions it.
+  parentRef:
+    # name is required when enabled.
+    name: ""
+    # namespace of the Gateway (optional; defaults to the route's namespace).
+    namespace: ""
+    # sectionName is optional (Gateway listener name); leave empty to
+    # attach to all matching listeners.
+    sectionName: ""
+    # port is optional (restrict to a specific listener port).
+    port: null
+  # Hostnames served by this HTTPRoute (must be allowed by the Gateway).
+  hostnames: []
+    # - rune.example.com
+  # HTTPRoute rules. If empty, a single default rule routes all paths to
+  # the chart's own Service on .Values.service.port.
+  rules: []
+    # - matches:
+    #     - path:
+    #         type: PathPrefix
+    #         value: /
+    #   backendRefs:
+    #     - name: rune
+    #       port: 8080
+    #       weight: 1
+
+# ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
 resources: {}
