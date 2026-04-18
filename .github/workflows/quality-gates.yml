@@ -16,10 +16,10 @@ permissions:
 
 jobs:
   security:
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
 
   helm:
-    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
     with:
       chart-dirs: "charts/postgres charts/rune charts/rune-operator"
 
@@ -59,10 +59,13 @@ jobs:
             helm uninstall "${chart}" --namespace rune-test
           done
 
+  guard:
+    uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+
   compliance:
-    needs: [security, helm, integration]
+    needs: [security, helm, integration, guard]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
     with:
       needs-json: ${{ toJson(needs) }}
-      merge-gate-excludes: "helm,integration,security" # Force pass
+      merge-gate-excludes: "helm,integration,security,guard" # Force pass
