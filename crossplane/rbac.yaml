@@ -11,7 +11,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: rune-crossplane-provisioner
-  # trivy:ignore:AVD-KSV-0041
   labels:
     app.kubernetes.io/managed-by: rune-charts
     infra.rune.ai/component: crossplane
@@ -42,7 +41,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: rune-crossplane-provisioner
-  # trivy:ignore:AVD-KSV-0041
   labels:
     app.kubernetes.io/managed-by: rune-charts
     infra.rune.ai/component: crossplane
@@ -54,6 +52,10 @@ subjects:
   # NOTE: Replace <install-id> with the actual provider-kubernetes install
   # ID from your cluster:
   #   kubectl -n crossplane-system get sa | grep provider-kubernetes
+  - kind: ServiceAccount
+    name: provider-kubernetes-<install-id>
+    namespace: crossplane-system
+der-kubernetes
   - kind: ServiceAccount
     name: provider-kubernetes-<install-id>
     namespace: crossplane-system
