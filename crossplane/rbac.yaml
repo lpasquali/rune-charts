@@ -55,3 +55,7 @@ subjects:
   - kind: ServiceAccount
     name: provider-kubernetes-<install-id>
     namespace: crossplane-system
+der-kubernetes
+  - kind: ServiceAccount
+    name: provider-kubernetes-<install-id>
+    namespace: crossplane-system
