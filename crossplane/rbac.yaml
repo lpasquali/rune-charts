@@ -11,6 +11,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: rune-crossplane-provisioner
+  # trivy:ignore:AVD-KSV-0041
   labels:
     app.kubernetes.io/managed-by: rune-charts
     infra.rune.ai/component: crossplane
@@ -41,6 +42,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: rune-crossplane-provisioner
+  # trivy:ignore:AVD-KSV-0041
   labels:
     app.kubernetes.io/managed-by: rune-charts
     infra.rune.ai/component: crossplane
