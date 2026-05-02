@@ -18,7 +18,6 @@ rules:
   # Core objects we write via provider-kubernetes.
   - apiGroups: [""]
     resources:
-      - secrets
       - namespaces
       - configmaps
     verbs: [get, list, watch, create, update, patch, delete]

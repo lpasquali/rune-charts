@@ -1,8 +1,8 @@
 # Default values for the postgres subchart (PostgreSQL 17, official image).
 
 image:
-  repository: docker.io/library/postgres
-  tag: "17-alpine"
+  repository: cgr.dev/chainguard/postgres
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 nameOverride: ""

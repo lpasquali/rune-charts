@@ -371,8 +371,8 @@ postgres:
   nameOverride: ""
   fullnameOverride: ""
   image:
-    repository: docker.io/library/postgres
-    tag: "17-alpine"
+    repository: cgr.dev/chainguard/postgres
+    tag: "latest"
     pullPolicy: IfNotPresent
   service:
     port: 5432
