@@ -64,6 +64,13 @@ estop:
   enabled: false
   configMapName: "rune-estop"
 
+webhook:
+  enabled: true
+  timeoutSeconds: 10
+  failurePolicy: Fail
+  certManager:
+    enabled: false
+
 resources:
   limits:
     cpu: 500m

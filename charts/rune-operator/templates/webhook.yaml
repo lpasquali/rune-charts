@@ -1,0 +1,101 @@
+{{- if .Values.webhook.enabled }}
+{{- $ca := "" -}}
+{{- $cert := "" -}}
+{{- $key := "" -}}
+{{- if not .Values.webhook.certManager.enabled }}
+{{- $caCert := genCA "rune-operator-webhook-ca" 3650 -}}
+{{- $serviceName := printf "%s-webhook" (include "rune-operator.fullname" .) -}}
+{{- $serverCert := genSignedCert $serviceName nil (list $serviceName (printf "%s.%s.svc" $serviceName .Release.Namespace)) 3650 $caCert -}}
+{{- $ca = $caCert.Cert | b64enc -}}
+{{- $cert = $serverCert.Cert | b64enc -}}
+{{- $key = $serverCert.Key | b64enc -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "rune-operator.fullname" . }}-webhook-cert
+  labels:
+    {{- include "rune-operator.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  ca.crt: {{ $ca }}
+  tls.crt: {{ $cert }}
+  tls.key: {{ $key }}
+{{- else }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "rune-operator.fullname" . }}-selfsigned-issuer
+  labels:
+    {{- include "rune-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "rune-operator.fullname" . }}-webhook-cert
+  labels:
+    {{- include "rune-operator.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "rune-operator.fullname" . }}-webhook
+    - {{ include "rune-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
+    - {{ include "rune-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "rune-operator.fullname" . }}-selfsigned-issuer
+  secretName: {{ include "rune-operator.fullname" . }}-webhook-cert
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rune-operator.fullname" . }}-webhook
+  labels:
+    {{- include "rune-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: webhook
+      protocol: TCP
+      name: webhook
+  selector:
+    {{- include "rune-operator.selectorLabels" . | nindent 4 }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "rune-operator.fullname" . }}-webhook
+  labels:
+    {{- include "rune-operator.labels" . | nindent 4 }}
+  {{- if .Values.webhook.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "rune-operator.fullname" . }}-webhook-cert
+  {{- end }}
+webhooks:
+  - name: vrune.kb.io
+    clientConfig:
+      service:
+        name: {{ include "rune-operator.fullname" . }}-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /validate-rune-k8s-io-v1alpha1-runebenchmark
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ $ca }}
+      {{- end }}
+    rules:
+      - apiGroups:
+          - rune.k8s.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - runebenchmarks
+    admissionReviewVersions:
+      - v1
+    sideEffects: None
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+{{- end }}
