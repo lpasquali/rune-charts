@@ -19,7 +19,7 @@ jobs:
     uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@72ffc70b5253c30afd47b06e81eff3f9b08c04c8
 
   helm:
-    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
+    uses: lpasquali/rune-ci/.github/workflows/helm-quality.yml@72ffc70b5253c30afd47b06e81eff3f9b08c04c8
     with:
       chart-dirs: "charts/postgres charts/rune charts/rune-operator"
 
