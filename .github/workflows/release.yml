@@ -11,6 +11,6 @@ permissions:
 
 jobs:
   release:
-    uses: lpasquali/rune-ci/.github/workflows/helm-release.yml@d1d2d2863dac135812bf98b89ae6f9bef8c33e63
+    uses: lpasquali/rune-ci/.github/workflows/helm-release.yml@cfdb81c2d4f03bb82786729401fe7b8e833e4347
     with:
       charts-dir: "charts"
